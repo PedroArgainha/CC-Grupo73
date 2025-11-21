@@ -33,6 +33,112 @@ class NaveMae:
 
 
 
+    def _ml_handle_ready(self, stream_id: int, header: ml.MLHeader, addr):
+        print(f"[NaveMae/ML] READY de rover {stream_id} (seq={header.seq})")
+
+        missao = self._ml_escolher_missao(stream_id)
+        if missao is None:
+            # Não há missão -> NOMISSION
+            msg = ml.build_message(
+                msg_type=ml.TYPE_NOMISSION,
+                seq=self._prox_seq_ml(),
+                ack=header.seq,          # a confirmar o READY
+                stream_id=stream_id,
+                payload=b"",
+                flags=ml.FLAG_NEEDS_ACK,
+            )
+            self.ml_sock.sendto(msg, addr)
+            print(f"[NaveMae/ML] → NOMISSION para rover {stream_id}")
+            return
+
+        mission_id, task_type, x, y, radius = missao
+        payload = ml.build_payload_mission(mission_id, task_type, x, y, radius)
+
+        # Guardar estado da missão
+        self.ml_estado[stream_id] = {
+            "mission_id": mission_id,
+            "task_type": task_type,
+            "target": (x, y),
+            "radius": radius,
+            "ultimo_progress": None,
+            "done": False,
+        }
+
+        msg = ml.build_message(
+            msg_type=ml.TYPE_MISSION,
+            seq=self._prox_seq_ml(),
+            ack=header.seq,       # piggyback ACK do READY
+            stream_id=stream_id,
+            payload=payload,
+            flags=ml.FLAG_NEEDS_ACK,
+        )
+        self.ml_sock.sendto(msg, addr)
+        print(f"[NaveMae/ML] → MISSION {mission_id} para rover {stream_id}")
+
+
+    def _ml_handle_progress(self, stream_id: int, header: ml.MLHeader, payload: bytes, addr):
+        try:
+            info = ml.parse_payload_progress(payload)
+        except ValueError as exc:
+            print(f"[NaveMae/ML] PROGRESS inválido de rover {stream_id}: {exc}")
+            return
+
+        # Garantir entrada no dicionário
+        self.ml_estado.setdefault(stream_id, {})
+        self.ml_estado[stream_id]["ultimo_progress"] = info
+
+        print(
+            f"[NaveMae/ML] PROGRESS rover {stream_id}: "
+            f"missao={info['mission_id']} status={info['status']} "
+            f"{info['percent']}% bat={info['battery']} "
+            f"pos=({info['x']:.1f},{info['y']:.1f})"
+        )
+
+        # Enviar ACK do PROGRESS
+        ack_msg = ml.build_message(
+            msg_type=ml.TYPE_ACK,
+            seq=self._prox_seq_ml(),
+            ack=header.seq,
+            stream_id=stream_id,
+            payload=b"",
+            flags=ml.FLAG_ACK_ONLY,
+        )
+        self.ml_sock.sendto(ack_msg, addr)
+
+
+    def _ml_handle_done(self, stream_id: int, header: ml.MLHeader, payload: bytes, addr):
+        try:
+            info = ml.parse_payload_done(payload)
+        except ValueError as exc:
+            print(f"[NaveMae/ML] DONE inválido de rover {stream_id}: {exc}")
+            return
+
+        mission_id = info["mission_id"]
+        result_code = info["result_code"]
+
+        estado = self.ml_estado.get(stream_id, {})
+        estado["done"] = True
+        self.ml_estado[stream_id] = estado
+
+        print(
+            f"[NaveMae/ML] DONE rover {stream_id}: "
+            f"missao={mission_id} resultado={result_code}"
+        )
+
+        # ACK do DONE
+        ack_msg = ml.build_message(
+            msg_type=ml.TYPE_ACK,
+            seq=self._prox_seq_ml(),
+            ack=header.seq,
+            stream_id=stream_id,
+            payload=b"",
+            flags=ml.FLAG_ACK_ONLY,
+        )
+        self.ml_sock.sendto(ack_msg, addr)
+
+
+
+
     def iniciar(self):
         
         # ---- Telemetria (TCP) ----
@@ -184,107 +290,3 @@ if __name__ == "__main__":
         pass
     finally:
         nave.parar()
-
-
-    def _ml_handle_ready(self, stream_id: int, header: ml.MLHeader, addr):
-        print(f"[NaveMae/ML] READY de rover {stream_id} (seq={header.seq})")
-
-        missao = self._ml_escolher_missao(stream_id)
-        if missao is None:
-            # Não há missão -> NOMISSION
-            msg = ml.build_message(
-                msg_type=ml.TYPE_NOMISSION,
-                seq=self._prox_seq_ml(),
-                ack=header.seq,          # a confirmar o READY
-                stream_id=stream_id,
-                payload=b"",
-                flags=ml.FLAG_NEEDS_ACK,
-            )
-            self.ml_sock.sendto(msg, addr)
-            print(f"[NaveMae/ML] → NOMISSION para rover {stream_id}")
-            return
-
-        mission_id, task_type, x, y, radius = missao
-        payload = ml.build_payload_mission(mission_id, task_type, x, y, radius)
-
-        # Guardar estado da missão
-        self.ml_estado[stream_id] = {
-            "mission_id": mission_id,
-            "task_type": task_type,
-            "target": (x, y),
-            "radius": radius,
-            "ultimo_progress": None,
-            "done": False,
-        }
-
-        msg = ml.build_message(
-            msg_type=ml.TYPE_MISSION,
-            seq=self._prox_seq_ml(),
-            ack=header.seq,       # piggyback ACK do READY
-            stream_id=stream_id,
-            payload=payload,
-            flags=ml.FLAG_NEEDS_ACK,
-        )
-        self.ml_sock.sendto(msg, addr)
-        print(f"[NaveMae/ML] → MISSION {mission_id} para rover {stream_id}")
-
-
-    def _ml_handle_progress(self, stream_id: int, header: ml.MLHeader, payload: bytes, addr):
-        try:
-            info = ml.parse_payload_progress(payload)
-        except ValueError as exc:
-            print(f"[NaveMae/ML] PROGRESS inválido de rover {stream_id}: {exc}")
-            return
-
-        # Garantir entrada no dicionário
-        self.ml_estado.setdefault(stream_id, {})
-        self.ml_estado[stream_id]["ultimo_progress"] = info
-
-        print(
-            f"[NaveMae/ML] PROGRESS rover {stream_id}: "
-            f"missao={info['mission_id']} status={info['status']} "
-            f"{info['percent']}% bat={info['battery']} "
-            f"pos=({info['x']:.1f},{info['y']:.1f})"
-        )
-
-        # Enviar ACK do PROGRESS
-        ack_msg = ml.build_message(
-            msg_type=ml.TYPE_ACK,
-            seq=self._prox_seq_ml(),
-            ack=header.seq,
-            stream_id=stream_id,
-            payload=b"",
-            flags=ml.FLAG_ACK_ONLY,
-        )
-        self.ml_sock.sendto(ack_msg, addr)
-
-
-    def _ml_handle_done(self, stream_id: int, header: ml.MLHeader, payload: bytes, addr):
-        try:
-            info = ml.parse_payload_done(payload)
-        except ValueError as exc:
-            print(f"[NaveMae/ML] DONE inválido de rover {stream_id}: {exc}")
-            return
-
-        mission_id = info["mission_id"]
-        result_code = info["result_code"]
-
-        estado = self.ml_estado.get(stream_id, {})
-        estado["done"] = True
-        self.ml_estado[stream_id] = estado
-
-        print(
-            f"[NaveMae/ML] DONE rover {stream_id}: "
-            f"missao={mission_id} resultado={result_code}"
-        )
-
-        # ACK do DONE
-        ack_msg = ml.build_message(
-            msg_type=ml.TYPE_ACK,
-            seq=self._prox_seq_ml(),
-            ack=header.seq,
-            stream_id=stream_id,
-            payload=b"",
-            flags=ml.FLAG_ACK_ONLY,
-        )
-        self.ml_sock.sendto(ack_msg, addr)
