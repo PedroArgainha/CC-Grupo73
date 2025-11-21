@@ -137,8 +137,6 @@ class NaveMae:
         self.ml_sock.sendto(ack_msg, addr)
 
 
-
-
     def iniciar(self):
         
         # ---- Telemetria (TCP) ----
@@ -146,7 +144,7 @@ class NaveMae:
         self.servidorSocket.listen()
         print(f"[NaveMae] a escutar em {self.host}:{self.port}")
         threading.Thread(target=self._cicloAceitacao, daemon=True).start()
-
+        
         # ---- Mission Link (UDP) ----
         self.ml_sock.bind((self.host, self.ml_port))
         print(f"[NaveMae] a escutar ML (UDP) em {self.host}:{self.ml_port}")

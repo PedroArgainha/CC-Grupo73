@@ -25,7 +25,7 @@ class Rover:
     proc_use: float = 0.0
     storage: float = 0.0
     sensores: int = 0
-    freq: int = 1  # mensagens por segundo
+    freq: int = 0.4  # mensagens por segundo
 
     def ajustarEstatisticas(self, mission: str):
         """Ajusta métricas de telemetria de forma pseudo-aleatória."""
