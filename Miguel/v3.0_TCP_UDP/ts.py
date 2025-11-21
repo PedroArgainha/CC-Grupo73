@@ -2,6 +2,7 @@ import struct
 import zlib
 from dataclasses import dataclass
 from typing import Tuple
+import roverAPI as Rover
 
 TYPE_HELLO = 0
 TYPE_INFO = 2
@@ -14,7 +15,8 @@ PAYLOAD_SIZE = 5  # proc_use, storage, velocidade, direcao, sensores
 
 
 def limitarByte(valor: float) -> int:
-    return max(0, min(255, int(val)))
+    return max(0, min(255, int(valor)))
+
 
 
 @dataclass
