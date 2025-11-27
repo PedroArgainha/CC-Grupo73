@@ -11,7 +11,7 @@ from roverINFO import Rover
 from websocket_server import WebsocketServer
 import json
 import time
-
+import argparse
 
 
 class NaveMae:
@@ -51,7 +51,7 @@ class NaveMae:
         # ================== WEBSOCKET (GROUND CONTROL) ==================
 
     def start_ws_server(self, host: str = "0.0.0.0", port: int = 2900):
-        server = WebsocketServer(port, host=host)
+        server = WebsocketServer(host=host, port=port)
         self.ws_server = server
 
         server.set_fn_new_client(self._ws_novo_cliente)
@@ -60,11 +60,9 @@ class NaveMae:
 
         print(f"[NaveMae] WebSocket em ws://{host}:{port}/")
 
-        # Thread para o servidor WS
         t_server = threading.Thread(target=server.run_forever, daemon=True)
         t_server.start()
 
-        # Thread para enviar updates periódicos
         t_sender = threading.Thread(target=self._ws_loop_envio, daemon=True)
         t_sender.start()
 
@@ -230,6 +228,9 @@ class NaveMae:
         self.ml_thread = threading.Thread(target=self._cicloML, daemon=True)
         self.ml_thread.start()
 
+        #GC
+        self.start_ws_server(host=self.host, port=2900)
+
 
     def parar(self):
         self.terminar = True
@@ -307,6 +308,7 @@ class NaveMae:
                 f"  -> proc={pl.proc_use} storage={pl.storage} vel={pl.velocidade} dir={pl.direcao} sens={pl.sensores}"
             )
             #meti este comentario para melhor debug
+            print (f"Recebi Rover {hdr.id_rover}\n")
             #print(mensagem)
             #faltaSaber como por destino
             self.rovers[hdr.id_rover].updateInfo(hdr.pos_x,hdr.pos_y,hdr.pos_z,(0,0,0),pl.velocidade,pl.direcao,hdr.bateria,hdr.state,pl.proc_use,pl.storage,pl.sensores,hdr.freq)
@@ -352,8 +354,6 @@ class NaveMae:
 
     
 if __name__ == "__main__":
-    import argparse
-
     parser = argparse.ArgumentParser(description="Nave Mãe minimal para frames TS.")
     parser.add_argument("--host", default="0.0.0.0", help="endereço para escutar")
     parser.add_argument("--port", type=int, default=6000, help="porto TCP para aceitar rovers")
