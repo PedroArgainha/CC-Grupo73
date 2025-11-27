@@ -65,6 +65,21 @@ class Rover:
     def limpaDity (self):
         self.dirty = False
 
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "pos": [self.pos_x, self.pos_y, self.pos_z],
+            "destino": list(self.destino),
+            "velocidade": self.velocidade,
+            "direcao": self.direcao,
+            "bateria": self.bateria,
+            "state": self.state,
+            "proc_use": self.proc_use,
+            "storage": self.storage,
+            "sensores": self.sensores,
+            "freq": self.freq,
+        }
+
     def ajustarEstatisticas(self, mission: str):
         self.proc_use = random.randint(1, 100)
         r = random.randint(1, 100)
@@ -96,3 +111,45 @@ class Rover:
         if estaNoDestino(self.pos_x, self.pos_y, self.pos_z, self.destino):
             return
         self.moverRover()
+
+    def print(self) -> str:
+        return (
+            f"[Rover {self.id}]\n"
+            f"  -> loc=({self.pos_x}, {self.pos_y}, {self.pos_z}) freq={self.freq}/s\n"
+            f"  -> bat={self.bateria}% estado={self.state}\n"
+            f"  -> proc={self.proc_use} storage={self.storage} "
+            f"vel={self.velocidade} dir={self.direcao} sens={self.sensores}"
+        )
+
+    def from_dict(data: dict) -> "Rover":
+
+        return Rover(
+            id = data["id"],
+            pos_x = data["pos"][0],
+            pos_y = data["pos"][1],
+            pos_z = data["pos"][2],
+            destino = tuple(data.get("destino", (0,0,0))),
+            velocidade = data.get("velocidade", 0.0),
+            direcao = data.get("direcao", 0.0),
+            bateria = data.get("bateria", 0.0),
+            state = data.get("state", 0),
+            proc_use = data.get("proc_use", 0.0),
+            storage = data.get("storage", 0.0),
+            sensores = data.get("sensores", 0),
+            freq = data.get("freq", 0.0),
+            dirty = False
+        )
+    
+    def update_from_dict(self, data: dict):
+        self.pos_x = data["pos"][0]
+        self.pos_y = data["pos"][1]
+        self.pos_z = data["pos"][2]
+        self.destino = tuple(data.get("destino", self.destino))
+        self.velocidade = data.get("velocidade", self.velocidade)
+        self.direcao = data.get("direcao", self.direcao)
+        self.bateria = data.get("bateria", self.bateria)
+        self.state = data.get("state", self.state)
+        self.proc_use = data.get("proc_use", self.proc_use)
+        self.storage = data.get("storage", self.storage)
+        self.sensores = data.get("sensores", self.sensores)
+        self.freq = data.get("freq", self.freq)

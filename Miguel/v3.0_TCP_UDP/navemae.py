@@ -8,6 +8,11 @@ import utils as utils
 import missionlink as ml
 from roverINFO import Rover
 
+from websocket_server import WebsocketServer
+import json
+import time
+
+
 
 class NaveMae:
 
@@ -28,15 +33,82 @@ class NaveMae:
         self.ml_thread: Optional[threading.Thread] = None
         self.ml_seq = 1 #numero de sequência global
 
+        # ---------- Ground Control webSockets (GC) ----------
+        self.ws_server: WebsocketServer | None = None
+        self.ws_client = None   # um único cliente
+
         # estado do rover por stream id
         self.ml_estado = {}
         i=0
+        self.nRovers = roversN
         self.rovers = []
         while i<roversN:
             rover = Rover(id=i)
             self.rovers.append(rover)
             i+=1
 
+
+        # ================== WEBSOCKET (GROUND CONTROL) ==================
+
+    def start_ws_server(self, host: str = "0.0.0.0", port: int = 2900):
+        server = WebsocketServer(port, host=host)
+        self.ws_server = server
+
+        server.set_fn_new_client(self._ws_novo_cliente)
+        server.set_fn_client_left(self._ws_cliente_saiu)
+        server.set_fn_message_received(self._ws_msg_recebida)
+
+        print(f"[NaveMae] WebSocket em ws://{host}:{port}/")
+
+        # Thread para o servidor WS
+        t_server = threading.Thread(target=server.run_forever, daemon=True)
+        t_server.start()
+
+        # Thread para enviar updates periódicos
+        t_sender = threading.Thread(target=self._ws_loop_envio, daemon=True)
+        t_sender.start()
+
+    def _ws_novo_cliente(self, client, server):
+        print("[NaveMae] Ground Control ligado:", client)
+        self.ws_client = client  # só um cliente
+
+    def _ws_cliente_saiu(self, client, server):
+        print("[NaveMae] Ground Control desligou-se:", client)
+        if self.ws_client == client:
+            self.ws_client = None
+
+    #duvida amanha para o prof
+    def _ws_msg_recebida(self, client, server, message: str):
+        print("[NaveMae] Mensagem do GC (ignorada):", message)
+
+    def _ws_loop_envio(self):
+        while not self.terminar:
+            self._enviar_dirty_rovers()
+            time.sleep(1)
+
+    def _enviar_dirty_rovers(self):
+
+        if not self.ws_server or not self.ws_client:
+            return
+        i=0
+        ficheiro = []
+        while i<self.nRovers:
+            if self.rovers[i].dirty:
+                ficheiro.append(self.rovers[i].to_dict())
+            i+=1
+        if not ficheiro:
+            return
+
+        # limpa o dirty
+        for r in self.rovers:
+            r.dirty = False
+
+        msg = json.dumps({"type": "rovers_update", "data": ficheiro})
+        try:
+            self.ws_server.send_message(self.ws_client, msg)
+        except Exception as e:
+            print("[NaveMae] Erro a enviar WebSocket:", e)
+            self.ws_client = None
 
 
 
@@ -234,7 +306,8 @@ class NaveMae:
                 f"  -> bat={hdr.bateria}% estado={hdr.state}\n"
                 f"  -> proc={pl.proc_use} storage={pl.storage} vel={pl.velocidade} dir={pl.direcao} sens={pl.sensores}"
             )
-            print(mensagem)
+            #meti este comentario para melhor debug
+            #print(mensagem)
             #faltaSaber como por destino
             self.rovers[hdr.id_rover].updateInfo(hdr.pos_x,hdr.pos_y,hdr.pos_z,(0,0,0),pl.velocidade,pl.direcao,hdr.bateria,hdr.state,pl.proc_use,pl.storage,pl.sensores,hdr.freq)
             return
@@ -280,7 +353,6 @@ class NaveMae:
     
 if __name__ == "__main__":
     import argparse
-    import time
 
     parser = argparse.ArgumentParser(description="Nave Mãe minimal para frames TS.")
     parser.add_argument("--host", default="0.0.0.0", help="endereço para escutar")
