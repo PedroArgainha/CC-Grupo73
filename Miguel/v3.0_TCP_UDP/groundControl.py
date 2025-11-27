@@ -11,7 +11,6 @@ class GroundControl:
 
     def __init__(self,roversN: int, host: str = "127.0.0.1", port: int = 2900):
         self.url = f"ws://{host}:{port}/"
-        self.n_rovers = roversN
         i=0
         self.nRovers = roversN
         self.rovers = []
@@ -28,7 +27,9 @@ class GroundControl:
             if self.estadoRovers[i]==None:
                 print (f"Rover {i}:\nSem informação disponivel")
             else:
+                print (f"Rover {i}:\n tenho informação disponivel")
                 self.rovers[i].print()
+            i+=1
 
     def _on_open(self, ws):
         print(f"[GC] Ligado à Nave-Mãe em {self.url}")
@@ -45,7 +46,7 @@ class GroundControl:
         except json.JSONDecodeError:
             print("[GC] Mensagem inválida:", message)
             return
-
+        print ("on message")
         tipo = data.get("type")
         if tipo == "rovers_update":
             self._process_rovers_update(data.get("data", []))
@@ -60,8 +61,9 @@ class GroundControl:
             if rid is None:
                 print("Sem updates para mostar")
                 continue
-            if 0 <= rid < self.n_rovers:
+            if 0 <= rid < self.nRovers:
                 self.rovers[rid].update_from_dict(rdata)
+                self.estadoRovers[rid] = True
 
         self.printRovers()
     

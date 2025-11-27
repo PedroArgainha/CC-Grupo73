@@ -95,6 +95,7 @@ class NaveMae:
                 ficheiro.append(self.rovers[i].to_dict())
             i+=1
         if not ficheiro:
+            print("[NaveMae] Nenhum rover dirty, nada para enviar")
             return
 
         # limpa o dirty
@@ -107,6 +108,8 @@ class NaveMae:
         except Exception as e:
             print("[NaveMae] Erro a enviar WebSocket:", e)
             self.ws_client = None
+        finally:
+            print("Enviei JSON")
 
 
 
@@ -308,10 +311,11 @@ class NaveMae:
                 f"  -> proc={pl.proc_use} storage={pl.storage} vel={pl.velocidade} dir={pl.direcao} sens={pl.sensores}"
             )
             #meti este comentario para melhor debug
-            print (f"Recebi Rover {hdr.id_rover}\n")
             #print(mensagem)
             #faltaSaber como por destino
-            self.rovers[hdr.id_rover].updateInfo(hdr.pos_x,hdr.pos_y,hdr.pos_z,(0,0,0),pl.velocidade,pl.direcao,hdr.bateria,hdr.state,pl.proc_use,pl.storage,pl.sensores,hdr.freq)
+            realIndex = hdr.id_rover - 1
+            self.rovers[realIndex].updateInfo(hdr.pos_x,hdr.pos_y,hdr.pos_z,(0,0,0),pl.velocidade,pl.direcao,hdr.bateria,hdr.state,pl.proc_use,pl.storage,pl.sensores,hdr.freq)
+            print (f"Recebi Rover {hdr.id_rover}\n")
             return
         if tipo in (ts.TYPE_END, ts.TYPE_FIN, 3):
             print(f"[NaveMae] Rover {hdr.id_rover} desligou-se da nave ({origem})")
