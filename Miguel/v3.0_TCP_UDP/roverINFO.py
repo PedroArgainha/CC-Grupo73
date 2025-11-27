@@ -7,10 +7,6 @@ from utils import moverPasso, estaNoDestino
 
 @dataclass
 class Rover:
-    """
-    Estado e lógica de movimento de um rover individual.
-    Este módulo não gere vários rovers; cada rover corre de forma independente.
-    """
 
     id: int
     tick: float = 1.0
@@ -26,9 +22,50 @@ class Rover:
     storage: float = 0.0
     sensores: int = 0
     freq: int = 0.4  # mensagens por segundo
+    dirty: bool = False
+
+    def updateInfo (self,x,y,z,destino,vel,dir,bat,estado,pro,sto,sens,freq):
+        if (self.pos_x != x):
+            self.pos_x = x
+            self.dirty = True
+        if (self.pos_y != y):
+            self.pos_y = y
+            self.dirty = True
+        if (self.pos_z != z):
+            self.pos_z = z
+            self.dirty = True
+        if (self.destino != destino):
+            self.destino = destino
+            self.dirty = True
+        if (self.velocidade != vel):
+            self.velocidade = vel
+            self.dirty = True
+        if (self.direcao != dir):
+            self.direcao = dir
+            self.dirty = True
+        if (self.bateria != bat):
+            self.bateria = bat
+            self.dirty = True
+        if (self.state != estado):
+            self.state = estado
+            self.dirty = True
+        if (self.proc_use != pro):
+            self.proc_use = pro
+            self.dirty = True
+        if (self.storage != sto):
+            self.storage =sto
+            self.dirty = True
+        if (self.sensores != sens):
+            self.sensores = sens
+            self.dirty = True
+        if (self.freq != freq):
+            self.freq = freq
+            self.dirty = True
+
+    def limpaDity (self):
+        self.dirty = False
 
     def ajustarEstatisticas(self, mission: str):
-        """Ajusta métricas de telemetria de forma pseudo-aleatória."""
         self.proc_use = random.randint(1, 100)
         r = random.randint(1, 100)
         if mission == "movimento":

@@ -6,14 +6,15 @@ import ts
 
 import utils as utils
 import missionlink as ml
+from roverINFO import Rover
 
 
 class NaveMae:
 
-    def __init__(self, host: str = "0.0.0.0", port: int = 6000):
+    def __init__(self,roversN: int, host: str = "0.0.0.0", port: int = 6000):
         self.host = host
         self.port = port
-       
+
         # ---------- Telemetria (TCP) ----------
         self.servidorSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.servidorSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -29,6 +30,12 @@ class NaveMae:
 
         # estado do rover por stream id
         self.ml_estado = {}
+        i=0
+        self.rovers = []
+        while i<roversN:
+            rover = Rover(id=i)
+            self.rovers.append(rover)
+            i+=1
 
 
 
@@ -228,6 +235,8 @@ class NaveMae:
                 f"  -> proc={pl.proc_use} storage={pl.storage} vel={pl.velocidade} dir={pl.direcao} sens={pl.sensores}"
             )
             print(mensagem)
+            #faltaSaber como por destino
+            self.rovers[hdr.id_rover].updateInfo(hdr.pos_x,hdr.pos_y,hdr.pos_z,(0,0,0),pl.velocidade,pl.direcao,hdr.bateria,hdr.state,pl.proc_use,pl.storage,pl.sensores,hdr.freq)
             return
         if tipo in (ts.TYPE_END, ts.TYPE_FIN, 3):
             print(f"[NaveMae] Rover {hdr.id_rover} desligou-se da nave ({origem})")
@@ -264,7 +273,6 @@ class NaveMae:
                 self._ml_handle_done(sid, header, payload, addr)
             elif msg_type == ml.TYPE_ACK:
                 # para já não estamos a usar ACKs do lado da Mãe,
-               
                 print(f"[NaveMae/ML] ACK de rover {sid} (ack={header.ack})")
             else:
                 print(f"[NaveMae/ML] tipo de mensagem desconhecido: {msg_type} de rover {sid}")
@@ -278,8 +286,8 @@ if __name__ == "__main__":
     parser.add_argument("--host", default="0.0.0.0", help="endereço para escutar")
     parser.add_argument("--port", type=int, default=6000, help="porto TCP para aceitar rovers")
     args = parser.parse_args()
-
-    nave = NaveMae(args.host, args.port)
+    roversN = 6
+    nave = NaveMae(roversN,args.host, args.port)
     nave.iniciar()
     try:
         while True:
