@@ -4,6 +4,8 @@ import random
 
 from utils import moverPasso, estaNoDestino
 
+from missoes import updateWork,int_to_mission
+
 
 @dataclass
 class Rover:
@@ -23,8 +25,12 @@ class Rover:
     sensores: int = 0
     freq: int = 0.4  # mensagens por segundo
     dirty: bool = False
+    missao:int = 0
+    progresso: int = 0
 
-    def updateInfo (self,x,y,z,destino,vel,dir,bat,estado,pro,sto,sens,freq):
+    def updateInfo (self,x,y,z,destino,vel,dir,bat,estado,proc,sto,sens,freq):
+        missao = 0
+        pro = 10
         if (self.pos_x != x):
             self.pos_x = x
             self.dirty = True
@@ -49,8 +55,8 @@ class Rover:
         if (self.state != estado):
             self.state = estado
             self.dirty = True
-        if (self.proc_use != pro):
-            self.proc_use = pro
+        if (self.proc_use != proc):
+            self.proc_use = proc
             self.dirty = True
         if (self.storage != sto):
             self.storage =sto
@@ -60,6 +66,12 @@ class Rover:
             self.dirty = True
         if (self.freq != freq):
             self.freq = freq
+            self.dirty = True
+        if (self.missao != missao):
+            self.missao = missao
+            self.dirty = True
+        if (self.progresso != pro):
+            self.progresso = pro
             self.dirty = True
 
     def limpaDity (self):
@@ -78,6 +90,8 @@ class Rover:
             "storage": self.storage,
             "sensores": self.sensores,
             "freq": self.freq,
+            "miss": self.missao,
+            "pro": self.progresso,
         }
 
     def ajustarEstatisticas(self, mission: str):
@@ -92,9 +106,7 @@ class Rover:
             self.sensores -= 1
 
     def moverRover(self):
-        """
-        Avança uma iteração de movimento e ajusta estatísticas auxiliares.
-        """
+
         novoX, novoY, novoZ, direcao = moverPasso(
             self.pos_x, self.pos_y, self.pos_z, self.destino, self.velocidade, self.tick, self.direcao
         )
@@ -107,18 +119,41 @@ class Rover:
         self.ajustarEstatisticas("movimento")
         self.bateria = max(0.0, self.bateria - 0.1)
 
+
     def iterar(self):
         if estaNoDestino(self.pos_x, self.pos_y, self.pos_z, self.destino):
+            self.pos_x, self.pos_y, self.pos_z = self.destino
+            if self.missao:
+                self.state = 1
+                self.progresso = updateWork (self.missao,self.progresso)
             return
         self.moverRover()
+        self.state = 2
 
-    def print(self) -> str:
+    def traduzEstado(self)->str:
+        if self.state == 0:
+            return "Livre"
+        elif self.state == 1:
+            return "A realizar trabalho"
+        elif self.state == 2:
+            return (f"A ir para o destino atual ({self.destino})")
+        else:
+            return "Erro"
+
+    def to_string(self) -> str:
         return (
             f"[Rover {self.id}]\n"
+            f"  -> Missao atual= {int_to_mission(self.missao)} || Progresso={self.progresso}%\n"
             f"  -> loc=({self.pos_x}, {self.pos_y}, {self.pos_z}) freq={self.freq}/s\n"
-            f"  -> bat={self.bateria}% estado={self.state}\n"
+            f"  -> bat={self.bateria}% estado={self.traduzEstado()}\n"
             f"  -> proc={self.proc_use} storage={self.storage} "
             f"vel={self.velocidade} dir={self.direcao} sens={self.sensores}"
+        )
+
+    def to_stringProgresso(self) -> str:
+        return (
+            f"  -> Missao atual= {int_to_mission(self.missao)} || Progresso={self.progresso}%\n"
+            f"[ -> Atribuida ao Rover {self.id}]\n"
         )
 
     def from_dict(data: dict) -> "Rover":
@@ -137,7 +172,9 @@ class Rover:
             storage = data.get("storage", 0.0),
             sensores = data.get("sensores", 0),
             freq = data.get("freq", 0.0),
-            dirty = False
+            dirty = False,
+            missao = data.get("miss",0),
+            progresso=data.get("pro",0),
         )
     
     def update_from_dict(self, data: dict):
@@ -153,3 +190,5 @@ class Rover:
         self.storage = data.get("storage", self.storage)
         self.sensores = data.get("sensores", self.sensores)
         self.freq = data.get("freq", self.freq)
+        self.missao = data.get("miss",self.missao)
+        self.progresso = data.get("pro",self.progresso)

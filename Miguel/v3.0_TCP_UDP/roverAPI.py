@@ -320,14 +320,6 @@ class RoverAPI:
         self.ml_thread.start()
 
     def _cicloMissionLink(self):
-        """Loop principal do Rover no protocolo MissionLink.
-
-        - Envia READY
-        - Espera MISSION ou NOMISSION
-        - Se NOMISSION: espera 2s e volta a enviar READY
-        - Se MISSION: atualiza destino do rover e envia ACK
-        (podes mais tarde acrescentar envio de PROGRESS e DONE aqui)
-        """
         while not self.eventoParar.is_set():
             # 1) Construir e enviar READY
             msg_ready = ml.build_message(
