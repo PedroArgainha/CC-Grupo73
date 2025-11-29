@@ -28,9 +28,7 @@ class Rover:
     missao:int = 0
     progresso: int = 0
 
-    def updateInfo (self,x,y,z,destino,vel,dir,bat,estado,proc,sto,sens,freq):
-        missao = 0
-        pro = 10
+    def updateInfo (self,x,y,z,destino,vel,dir,bat,estado,proc,sto,sens,freq,missao,pro):
         if (self.pos_x != x):
             self.pos_x = x
             self.dirty = True
@@ -100,7 +98,7 @@ class Rover:
         if mission == "movimento":
             r = self.storage + r / 7
         self.storage = r
-        if r < 20:
+        if r < 15:
             self.sensores += 1
         if r > 90 and self.sensores > 0:
             self.sensores -= 1
@@ -117,7 +115,7 @@ class Rover:
         self.velocidade = max(0.0, self.velocidade + variacaoVel)
         self.direcao = direcao
         self.ajustarEstatisticas("movimento")
-        self.bateria = max(0.0, self.bateria - 0.1)
+        self.bateria = max(0.0, self.bateria - 0.5)
 
 
     def iterar(self):
@@ -129,6 +127,13 @@ class Rover:
             return
         self.moverRover()
         self.state = 2
+
+    def resetarWork(self):
+        self.missao = 0
+        self.progresso = 0
+
+    def atribiuMission(self,miss):
+        self.missao = miss
 
     def traduzEstado(self)->str:
         if self.state == 0:

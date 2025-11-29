@@ -28,6 +28,9 @@ class RoverAPI:
         self.ml_seq = 1                   # contador de sequência para ML
         self.ml_thread: Optional[threading.Thread] = None
 
+    def atribuir_missao(self, miss: int):
+        self.rover.atribiuMission(miss)
+
     # ---------- controlo ----------
     def iniciar(self):
         if self.threadEnvio and self.threadEnvio.is_alive():

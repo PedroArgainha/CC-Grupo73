@@ -9,7 +9,7 @@ TYPE_INFO = 2
 TYPE_END = 3
 TYPE_FIN = 4
 
-HEADER_FMT = ">BBBBBBBIIB"  # 7 bytes + 4 + 4 + 1 = 16
+HEADER_FMT = ">BBBBBBBIIBBB"  # 7 bytes + 4 + 4 + 1 = 16
 HEADER_SIZE = struct.calcsize(HEADER_FMT)
 PAYLOAD_SIZE = 5  # proc_use, storage, velocidade, direcao, sensores
 
@@ -31,6 +31,8 @@ class Header:
     checksum: int
     payload_len: int
     freq: int
+    miss: int
+    progresso: int
 
 
 @dataclass
@@ -82,6 +84,8 @@ def codificarFrame(tipo: int, rover, freq: int) -> bytes:
         checksum=checksum,
         payload_len=payload_len,
         freq=limitarByte(freq),
+        miss=limitarByte(rover.missao),
+        progresso=limitarByte(rover.progresso)
     )
     header_bytes = struct.pack(
         HEADER_FMT,
@@ -95,6 +99,8 @@ def codificarFrame(tipo: int, rover, freq: int) -> bytes:
         header.checksum,
         header.payload_len,
         header.freq,
+        header.miss,
+        header.progresso
     )
     return header_bytes + payload_bytes
 
@@ -131,7 +137,7 @@ def frameParaTexto(frame: Frame, origem: str | None = None) -> str:
     )
     origemTxt = f" {origem}" if origem else ""
     return (
-        f"[TS{origemTxt}] tipo={nomeTipo} id={cabecalho.id_rover} freq={cabecalho.freq}/s "
+        f"[TS{origemTxt}] tipo={nomeTipo} id={cabecalho.id_rover} freq={cabecalho.freq}/s missao={cabecalho.miss} progresso={cabecalho.progresso}% "
         f"pos=({cabecalho.pos_x},{cabecalho.pos_y},{cabecalho.pos_z}) bat={cabecalho.bateria}% st={cabecalho.state} "
         f"proc={payload.proc_use} storage={payload.storage} vel={payload.velocidade} dir={payload.direcao} sens={payload.sensores}"
     )
