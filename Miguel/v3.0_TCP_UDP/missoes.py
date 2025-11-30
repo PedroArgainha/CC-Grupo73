@@ -23,7 +23,7 @@ def int_to_mission(missao: int) -> str:
     raise ValueError(f"ID de missão desconhecido: {missao}")
 
 
-def updateWork(valor: int,proAtual) -> int:
+def updateWork(valor: int,proAtual,dur) -> int:
     if valor == 0:
         return 0
     elif valor == 1:

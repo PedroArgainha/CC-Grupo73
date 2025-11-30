@@ -27,6 +27,7 @@ class Rover:
     dirty: bool = False
     missao:int = 0
     progresso: int = 0
+    duracao: int = 0
 
     def updateInfo (self,x,y,z,destino,vel,dir,bat,estado,proc,sto,sens,freq,missao,pro):
         if (self.pos_x != x):
@@ -123,7 +124,7 @@ class Rover:
             self.pos_x, self.pos_y, self.pos_z = self.destino
             if self.missao:
                 self.state = 1
-                self.progresso = updateWork (self.missao,self.progresso)
+                self.progresso = updateWork (self.missao,self.progresso,self.duracao)
             return
         self.moverRover()
         self.state = 2
