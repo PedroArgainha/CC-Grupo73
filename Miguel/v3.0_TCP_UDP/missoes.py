@@ -23,23 +23,24 @@ def int_to_mission(missao: int) -> str:
     raise ValueError(f"ID de missão desconhecido: {missao}")
 
 
-def updateWork(valor: int,proAtual,dur) -> int:
-    if valor == 0:
-        return 0
-    elif valor == 1:
-        return min(proAtual+2,100)
-    elif valor == 2:
-        return min(proAtual+5,100)
-    elif valor == 3:
-        return min(proAtual+1,100)
-    elif valor == 4:
-        return min(proAtual+3,100)
-    elif valor == 5:
-        return min(proAtual+1,100)
-    elif valor == 6:
-        return min(proAtual+4,100)
-    else:
+def updateWork(valor: int, proAtual: int, dur: int) -> int:
+    incremento = {
+        0: 0,
+        1: 2,
+        2: 5,
+        3: 1,
+        4: 3,
+        5: 1,
+        6: 4
+    }
+
+    if valor not in incremento:
         raise ValueError("Valor fora do intervalo permitido (0-6)")
+    
+    inc_base = incremento[valor]
+    inc_escalado = inc_base * (dur / 60)
+    return min(int(proAtual + inc_escalado), 100)
+
 
 
 
