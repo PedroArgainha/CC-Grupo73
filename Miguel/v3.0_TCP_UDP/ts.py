@@ -1,6 +1,7 @@
 import struct
 import zlib
 from dataclasses import dataclass
+from typing import Optional as Optimal
 from typing import Tuple
 
 TYPE_HELLO = 0
@@ -10,7 +11,7 @@ TYPE_FIN = 4
 
 HEADER_FMT = ">BBBBBBBIIB"  # 7 bytes + 4 + 4 + 1 = 16
 HEADER_SIZE = struct.calcsize(HEADER_FMT)
-PAYLOAD_SIZE = 5  # proc_use, storage, velocidade, direcao, sensores
+PAYLOAD_SIZE = 5  #proc_use, storage, velocidade, direcao, sensores
 
 
 def limitarByte(valor: float) -> int:
@@ -122,7 +123,7 @@ def decodificarFrame(header_bytes: bytes, payload_bytes: bytes) -> Frame:
     return Frame(hdr, payload)
 
 
-def frameParaTexto(frame: Frame, origem: str | None = None) -> str:
+def frameParaTexto(frame: Frame, origem: Optimal[str] = None) -> str:
     cabecalho, payload = frame.header, frame.payload
     nomeTipo = {TYPE_HELLO: "HELLO", TYPE_INFO: "INFO", TYPE_END: "END", TYPE_FIN: "FIN"}.get(
         cabecalho.tipo, str(cabecalho.tipo)
