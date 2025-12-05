@@ -317,3 +317,5 @@ def parse_payload_done(payload: bytes) -> Dict[str, Any]:
 def is_flag_set(flags: int, flag: int) -> bool:
     """util testar flags (NEEDS_ACK, ACK_ONLY, RETX)."""
     return (flags & flag) != 0
+
+
