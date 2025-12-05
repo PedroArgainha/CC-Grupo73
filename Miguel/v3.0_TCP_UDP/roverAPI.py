@@ -49,6 +49,67 @@ class RoverAPI:
         """Setter simples, caso queiras atribuir missão manualmente (não é o normal em ML)."""
         self.rover.atribiuMission(miss)
 
+    def send_reliable(self, msg_bytes: bytes, seq: int, addr, timeout: float = 0.5, max_retries: int = 5) -> bool:
+            """
+            Envia msg_bytes para addr de forma fiável:
+            - espera um ACK com ack == seq
+            - em caso de timeout, reenvia com flag RETX
+            - pára ao fim de max_retries tentativas
+
+            Devolve True se recebeu o ACK certo, False se desistiu.
+            """
+            retries = 0
+
+            # garantir timeout certo neste contexto
+            self.ml_sock.settimeout(timeout)
+
+            while retries <= max_retries and not self.eventoParar.is_set():
+                try:
+                    # envia a mensagem
+                    self.ml_sock.sendto(msg_bytes, addr)
+
+                    # espera ACK
+                    data, _ = self.ml_sock.recvfrom(4096)
+                    try:
+                        h_ack, _ = ml.parse_message(data)
+                    except ValueError:
+                        # lixo → ignora e continua à espera
+                        continue
+
+                    if h_ack.msg_type == ml.TYPE_ACK and h_ack.ack == seq:
+                        # ACK correto
+                        return True
+
+                    # ACK de outra coisa → ignorar neste "canal" e continuar
+                    continue
+
+                except socket.timeout:
+                    retries += 1
+                    print(f"[Rover {self.rover.id}] TIMEOUT seq={seq} → retry {retries}")
+
+                    # marcar RETX na próxima retransmissão
+                    try:
+                        hdr, payload = ml.parse_message(msg_bytes)
+                    except ValueError:
+                        # se for mesmo lixo, desistimos
+                        break
+
+                    msg_bytes = ml.build_message(
+                        msg_type=hdr.msg_type,
+                        seq=seq,          # MESMO seq para RETX
+                        ack=hdr.ack,
+                        stream_id=hdr.stream_id,
+                        payload=payload,
+                        flags=ml.FLAG_RETX | (hdr.flags & ~ml.FLAG_RETX),
+                    )
+
+                except OSError as exc:
+                    print(f"[Rover {self.rover.id}] erro em send_reliable: {exc}")
+                    break
+
+            print(f"[Rover {self.rover.id}] FALHA: excedeu MAX_RETRIES para seq={seq}")
+            return False
+
     # ---------- controlo geral ----------
 
     def iniciar(self):
@@ -153,235 +214,235 @@ class RoverAPI:
         self.ml_thread.start()
 
     def _cicloMissionLink(self):
-        """
-        Loop principal do protocolo MissionLink (UDP):
+                """
+                Loop principal do protocolo MissionLink (UDP):
 
-            READY -> (MISSION | NOMISSION)
-            MISSION -> ciclo PROGRESS -> DONE
+                    READY -> (MISSION | NOMISSION)
+                    MISSION -> ciclo PROGRESS -> DONE
 
-        A posição, bateria e progresso são atualizados pelo _cicloEnvio()
-        através de rover.iterar() + lógica em roverINFO.
-        """
-        print(f"[Rover {self.rover.id}] MissionLink iniciado.")
+                A posição, bateria e progresso são atualizados pelo _cicloEnvio()
+                através de rover.iterar() + lógica em roverINFO.
+                """
+                print(f"[Rover {self.rover.id}] MissionLink iniciado.")
 
-        while not self.eventoParar.is_set():
-            # ============================================================
-            # 1) Enviar READY a pedir missão
-            # ============================================================
-            seq_ready = self._next_ml_seq()
-            msg_ready = ml.build_message(
-                msg_type=ml.TYPE_READY,
-                seq=seq_ready,
-                ack=0,
-                stream_id=self.ml_stream_id,
-                payload=b"",
-                flags=ml.FLAG_NEEDS_ACK,
-            )
-
-            try:
-                self.ml_sock.sendto(msg_ready, (self.ml_host, self.ml_port))
-                print(f"[Rover {self.rover.id}] → READY (seq={seq_ready})")
-            except OSError as exc:
-                print(f"[Rover {self.rover.id}] erro a enviar READY: {exc}")
-                time.sleep(1.0)
-                continue
-
-            # ============================================================
-            # 2) Esperar resposta (MISSION ou NOMISSION)
-            # ============================================================
-            try:
-                data, addr = self.ml_sock.recvfrom(4096)
-            except socket.timeout:
-                # ninguém respondeu → tenta outra vez no próximo ciclo
-                print(f"[Rover {self.rover.id}] timeout à espera de MISSION/NOMISSION")
-                time.sleep(1.0)
-                continue
-            except OSError:
-                # socket foi fechado em parar()
-                break
-
-            try:
-                header, payload = ml.parse_message(data)
-            except ValueError as exc:
-                print(f"[Rover {self.rover.id}] mensagem ML inválida: {exc}")
-                continue
-
-            # ============================================================
-            # 3) Tratar NOMISSION
-            # ============================================================
-            if header.msg_type == ml.TYPE_NOMISSION:
-                print(f"[Rover {self.rover.id}] Nave-Mãe sem missão. Vou esperar e tentar de novo.")
-
-                # ACK da NOMISSION (ACK_ONLY)
-                seq_ack = self._next_ml_seq()
-                ack_msg = ml.build_message(
-                    msg_type=ml.TYPE_ACK,
-                    seq=seq_ack,
-                    ack=header.seq,
-                    stream_id=self.ml_stream_id,
-                    payload=b"",
-                    flags=ml.FLAG_ACK_ONLY,
-                )
-                try:
-                    self.ml_sock.sendto(ack_msg, addr)
-                except OSError:
-                    pass
-
-                time.sleep(2.0)  # espera 2s antes de voltar a enviar READY
-                continue
-
-            # ============================================================
-            # 4) Tratar MISSION
-            # ============================================================
-            if header.msg_type == ml.TYPE_MISSION:
-                miss = ml.parse_payload_mission(payload)
-                mission_id = miss["mission_id"]
-                x = miss["x"]
-                y = miss["y"]
-                radius = miss["radius"]
-                # Se o missionlink já tiver sido atualizado para incluir duracao:
-                duracao = miss.get("duracao", 60.0)  # fallback para não rebentar se ainda não tiver campo
-
-                print(f"[Rover {self.rover.id}] recebi missão: {miss}")
-
-                # Atualizar destino do Rover com base na missão (Z mantém-se)
-                self.rover.destino = (x, y, self.rover.pos_z)
-
-                # Atualizar info de missão no Rover
-                self.rover.atribiuMission(mission_id)
-                self.rover.duracao = duracao
-                self.rover.progresso = 0
-                self.rover.state = 1  # "a realizar trabalho" quando chegar ao destino
-
-                # ACK da MISSION
-                seq_ack = self._next_ml_seq()
-                ack_msg = ml.build_message(
-                    msg_type=ml.TYPE_ACK,
-                    seq=seq_ack,
-                    ack=header.seq,
-                    stream_id=self.ml_stream_id,
-                    payload=b"",
-                    flags=ml.FLAG_ACK_ONLY,
-                )
-                try:
-                    self.ml_sock.sendto(ack_msg, addr)
-                    print(f"[Rover {self.rover.id}] → ACK MISSION (ack={header.seq})")
-                except OSError:
-                    pass
-
-                # ========================================================
-                # 5) Ciclo de PROGRESS enquanto a missão decorre
-                #    NOTA: quem atualiza pos/progresso é o _cicloEnvio()
-                #    via rover.iterar() + updateWork() em roverINFO.
-                # ========================================================
                 while not self.eventoParar.is_set():
-                    # Se por algum motivo a missão mudou externamente, saímos
-                    if self.rover.missao != mission_id:
-                        print(f"[Rover {self.rover.id}] missão mudou durante PROGRESS, a sair do ciclo.")
-                        break
-
-                    percent = max(0, min(100, int(self.rover.progresso)))
-                    dx = self.rover.pos_x - x
-                    dy = self.rover.pos_y - y
-                    dist = (dx * dx + dy * dy) ** 0.5
-
-                    # Construir PROGRESS com o estado atual
-                    progress_payload = ml.build_payload_progress(
-                        mission_id=mission_id,
-                        status=0,                # 0 = em curso
-                        percent=percent,
-                        battery=int(self.rover.bateria),
-                        x=self.rover.pos_x,
-                        y=self.rover.pos_y,
-                    )
-
-                    seq_prog = self._next_ml_seq()
-                    msg_progress = ml.build_message(
-                        msg_type=ml.TYPE_PROGRESS,
-                        seq=seq_prog,
+                    # ============================================================
+                    # 1) Enviar READY a pedir missão
+                    #    (Aqui NÃO usamos send_reliable, porque o ACK vem piggyback
+                    #     na própria resposta MISSION/NOMISSION.)
+                    # ============================================================
+                    seq_ready = self._next_ml_seq()
+                    msg_ready = ml.build_message(
+                        msg_type=ml.TYPE_READY,
+                        seq=seq_ready,
                         ack=0,
                         stream_id=self.ml_stream_id,
-                        payload=progress_payload,
+                        payload=b"",
                         flags=ml.FLAG_NEEDS_ACK,
                     )
 
                     try:
-                        self.ml_sock.sendto(msg_progress, (self.ml_host, self.ml_port))
-                        print(f"[Rover {self.rover.id}] → PROGRESS (seq={seq_prog}, {percent}%)")
+                        self.ml_sock.sendto(msg_ready, (self.ml_host, self.ml_port))
+                        print(f"[Rover {self.rover.id}] → READY (seq={seq_ready})")
                     except OSError as exc:
-                        print(f"[Rover {self.rover.id}] erro ao enviar PROGRESS: {exc}")
-                        break
+                        print(f"[Rover {self.rover.id}] erro a enviar READY: {exc}")
+                        time.sleep(1.0)
+                        continue
 
-                    # Esperar ACK (versão simples, sem RETX por agora)
+                    # ============================================================
+                    # 2) Esperar resposta (MISSION ou NOMISSION)
+                    # ============================================================
                     try:
-                        data_ack, _ = self.ml_sock.recvfrom(4096)
-                        h_ack, _ = ml.parse_message(data_ack)
-                        if h_ack.msg_type == ml.TYPE_ACK and h_ack.ack == seq_prog:
-                            print(f"[Rover {self.rover.id}] ← ACK PROGRESS ({seq_prog})")
+                        data, addr = self.ml_sock.recvfrom(4096)
                     except socket.timeout:
-                        print(f"[Rover {self.rover.id}] timeout PROGRESS → ignorado (sem RETX por agora).")
+                        # ninguém respondeu → tenta outra vez no próximo ciclo
+                        print(f"[Rover {self.rover.id}] timeout à espera de MISSION/NOMISSION")
+                        time.sleep(1.0)
+                        continue
                     except OSError:
+                        # socket foi fechado em parar()
                         break
 
-                    # Pausa entre envios de PROGRESS
-                    time.sleep(0.3)
+                    try:
+                        header, payload = ml.parse_message(data)
+                    except ValueError as exc:
+                        print(f"[Rover {self.rover.id}] mensagem ML inválida: {exc}")
+                        continue
 
-                    # Condição de fim de missão:
-                    #   - ou chegou suficientemente perto do destino
-                    #   - ou o progresso já atingiu 100%
-                    if dist <= radius or percent >= 100:
-                        print(
-                            f"[Rover {self.rover.id}] missão {mission_id} concluída "
-                            f"(dist={dist:.2f}, prog={percent}%)."
+                    # ============================================================
+                    # 3) Tratar NOMISSION
+                    # ============================================================
+                    if header.msg_type == ml.TYPE_NOMISSION:
+                        print(f"[Rover {self.rover.id}] Nave-Mãe sem missão. Vou esperar e tentar de novo.")
+
+                        # ACK da NOMISSION (ACK_ONLY)
+                        seq_ack = self._next_ml_seq()
+                        ack_msg = ml.build_message(
+                            msg_type=ml.TYPE_ACK,
+                            seq=seq_ack,
+                            ack=header.seq,
+                            stream_id=self.ml_stream_id,
+                            payload=b"",
+                            flags=ml.FLAG_ACK_ONLY,
                         )
-                        break
+                        try:
+                            self.ml_sock.sendto(ack_msg, addr)
+                        except OSError:
+                            pass
 
-                # ========================================================
-                # 6) Enviar DONE
-                # ========================================================
-                done_payload = ml.build_payload_done(
-                    mission_id=mission_id,
-                    result_code=0,    # 0 = OK
-                )
+                        time.sleep(2.0)  # espera 2s antes de voltar a enviar READY
+                        continue
 
-                seq_done = self._next_ml_seq()
-                msg_done = ml.build_message(
-                    msg_type=ml.TYPE_DONE,
-                    seq=seq_done,
-                    ack=0,
-                    stream_id=self.ml_stream_id,
-                    payload=done_payload,
-                    flags=ml.FLAG_NEEDS_ACK,
-                )
-                try:
-                    self.ml_sock.sendto(msg_done, (self.ml_host, self.ml_port))
-                    print(f"[Rover {self.rover.id}] → DONE (seq={seq_done})")
-                except OSError as exc:
-                    print(f"[Rover {self.rover.id}] erro ao enviar DONE: {exc}")
+                    # ============================================================
+                    # 4) Tratar MISSION
+                    # ============================================================
+                    if header.msg_type == ml.TYPE_MISSION:
+                        try:
+                            miss = ml.parse_payload_mission(payload)
+                        except ValueError as exc:
+                            print(f"[Rover {self.rover.id}] MISSION inválida: {exc}")
+                            continue
 
-                # Espera ACK ao DONE (simples)
-                try:
-                    data_ack, _ = self.ml_sock.recvfrom(4096)
-                    h_ack, _ = ml.parse_message(data_ack)
-                    if h_ack.msg_type == ml.TYPE_ACK and h_ack.ack == seq_done:
-                        print(f"[Rover {self.rover.id}] ← ACK DONE ({seq_done})")
-                except socket.timeout:
-                    print(f"[Rover {self.rover.id}] timeout à espera do ACK DONE")
-                except OSError:
-                    pass
+                        print(f"[Rover {self.rover.id}] recebi missão: {miss}")
 
-                # Limpar estado de missão no rover
-                self.rover.state = 0          # rover volta a idle
-                self.rover.resetarWork()      # limpar missao + progresso
+                        mission_id = miss["mission_id"]
+                        x = miss["x"]
+                        y = miss["y"]
+                        radius = miss["radius"]
+                        duracao = miss["duracao"]   # ML já tem este campo
 
-                # missão concluída → volta ao READY (próxima iteração do while)
-                continue
+                        # Atualizar destino do Rover com base na missão (Z mantém-se)
+                        self.rover.destino = (x, y, self.rover.pos_z)
 
-            # ============================================================
-            # 7) Se chegou outro tipo inesperado
-            # ============================================================
-            print(f"[Rover {self.rover.id}] msg_type inesperado no ML: {header.msg_type}")
-            time.sleep(1.0)
+                        # Atualizar info de missão no Rover
+                        self.rover.atribiuMission(mission_id)  # missão em formato int
+                        self.rover.duracao = duracao           # usado pelo updateWork
+                        self.rover.progresso = 0               # começa a 0%
+                        self.rover.state = 1                   # "a realizar trabalho"
+
+                        # ACK da MISSION
+                        seq_ack = self._next_ml_seq()
+                        ack_msg = ml.build_message(
+                            msg_type=ml.TYPE_ACK,
+                            seq=seq_ack,
+                            ack=header.seq,
+                            stream_id=self.ml_stream_id,
+                            payload=b"",
+                            flags=ml.FLAG_ACK_ONLY,
+                        )
+                        try:
+                            self.ml_sock.sendto(ack_msg, addr)
+                            print(f"[Rover {self.rover.id}] → ACK MISSION (ack={header.seq})")
+                        except OSError:
+                            pass
+
+                        # ========================================================
+                        # 5) Ciclo de PROGRESS enquanto a missão decorre
+                        #    NOTA: quem atualiza pos/progresso é o _cicloEnvio()
+                        #    via rover.iterar() + updateWork() em roverINFO.
+                        # ========================================================
+                        while not self.eventoParar.is_set():
+                            # Se por algum motivo a missão mudou externamente, saímos
+                            if self.rover.missao != mission_id:
+                                print(f"[Rover {self.rover.id}] missão mudou durante PROGRESS, a sair do ciclo.")
+                                break
+
+                            # percentagem baseada no progresso lógico interno (0–100)
+                            percent = max(0, min(100, int(self.rover.progresso)))
+
+                            dx = self.rover.pos_x - x
+                            dy = self.rover.pos_y - y
+                            dist = (dx * dx + dy * dy) ** 0.5
+
+                            # Construir PROGRESS com o estado atual
+                            progress_payload = ml.build_payload_progress(
+                                mission_id=mission_id,
+                                status=0,                # 0 = em curso
+                                percent=percent,
+                                battery=int(self.rover.bateria),
+                                x=self.rover.pos_x,
+                                y=self.rover.pos_y,
+                            )
+
+                            seq_prog = self._next_ml_seq()
+                            msg_progress = ml.build_message(
+                                msg_type=ml.TYPE_PROGRESS,
+                                seq=seq_prog,
+                                ack=0,
+                                stream_id=self.ml_stream_id,
+                                payload=progress_payload,
+                                flags=ml.FLAG_NEEDS_ACK,
+                            )
+
+                            try:
+                                ok = self.send_reliable(
+                                    msg_progress,
+                                    seq_prog,
+                                    (self.ml_host, self.ml_port),
+                                )
+                                if not ok:
+                                    print(f"[Rover {self.rover.id}] falha a enviar PROGRESS fiável (seq={seq_prog})")
+                                    break
+                                print(f"[Rover {self.rover.id}] → PROGRESS (seq={seq_prog}, {percent}%)")
+                            except OSError as exc:
+                                print(f"[Rover {self.rover.id}] erro ao enviar PROGRESS: {exc}")
+                                break
+
+                            # Pausa entre envios de PROGRESS
+                            time.sleep(0.3)
+
+                            # Condição de fim de missão:
+                            #   - chegou suficientemente perto do destino
+                            #   - OU o progresso já atingiu 100%
+                            if dist <= radius or percent >= 100:
+                                print(
+                                    f"[Rover {self.rover.id}] missão {mission_id} concluída "
+                                    f"(dist={dist:.2f}, prog={percent}%)."
+                                )
+                                break
+
+                        # ========================================================
+                        # 6) Enviar DONE
+                        # ========================================================
+                        done_payload = ml.build_payload_done(
+                            mission_id=mission_id,
+                            result_code=0,    # 0 = OK
+                        )
+
+                        seq_done = self._next_ml_seq()
+                        msg_done = ml.build_message(
+                            msg_type=ml.TYPE_DONE,
+                            seq=seq_done,
+                            ack=0,
+                            stream_id=self.ml_stream_id,
+                            payload=done_payload,
+                            flags=ml.FLAG_NEEDS_ACK,
+                        )
+                        try:
+                            ok = self.send_reliable(
+                                msg_done,
+                                seq_done,
+                                (self.ml_host, self.ml_port),
+                            )
+                            if not ok:
+                                print(f"[Rover {self.rover.id}] falha a enviar DONE fiável (seq={seq_done})")
+                            else:
+                                print(f"[Rover {self.rover.id}] → DONE (seq={seq_done})")
+                        except OSError as exc:
+                            print(f"[Rover {self.rover.id}] erro ao enviar DONE: {exc}")
+
+                        # Limpar estado de missão no rover
+                        self.rover.state = 0          # rover volta a idle
+                        self.rover.resetarWork()      # limpar missao + progresso
+
+                        # missão concluída → volta ao READY (próxima iteração do while)
+                        continue
+
+                    # ============================================================
+                    # 7) Se chegou outro tipo inesperado
+                    # ============================================================
+                    print(f"[Rover {self.rover.id}] msg_type inesperado no ML: {header.msg_type}")
+                    time.sleep(1.0)
 
 
 # ---------- modo standalone ----------
