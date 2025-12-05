@@ -39,6 +39,7 @@ class NaveMae:
 
         # estado do rover por stream id
         self.ml_estado = {}
+        self.ml_last_seq = {}
         i=0
         self.nRovers = roversN
         self.rovers = []
@@ -46,6 +47,17 @@ class NaveMae:
             rover = Rover(id=i)
             self.rovers.append(rover)
             i+=1
+
+        # ================== MissionLink helpers ==================
+
+    def _prox_seq_ml(self) -> int:
+        """
+        Devolve o seq atual e incrementa-o para a próxima mensagem ML.
+        Ajuda a manter o contador de sequência consistente.
+        """
+        s = self.ml_seq
+        self.ml_seq += 1
+        return s
 
 
         # ================== WEBSOCKET (GROUND CONTROL) ==================
@@ -112,11 +124,66 @@ class NaveMae:
             print("Enviei JSON")
 
 
+    def _ml_escolher_missao(self, stream_id: int):
+            """
+            Decide que missão atribuir ao rover 'stream_id'.
 
+            Retorna:
+            (mission_id, task_type, x, y, radius, duracao)
+            ou
+            None se não houver missão disponível.
+            """
+
+            # TODO: aqui podes pôr lógica real (fila de missões, etc.)
+
+            # Exemplo “hardcoded” só para testar:
+            mission_id = 1         # por ex. "Tirar fotos"
+            task_type = 0          # por enquanto não estás a usar muito isto
+            x = 10.0
+            y = 5.0
+            radius = 2.0
+            duracao = 60.0         # 60 (segundos) – consistente com missoes.updateWork
+
+            return (mission_id, task_type, x, y, radius, duracao)
+
+    # ================== MissionLink handlers ==================
+    def _ml_is_duplicate(self, stream_id: int, header: ml.MLHeader) -> bool:
+        """
+        Atualiza o último seq visto para este stream_id e diz se esta
+        mensagem deve ser tratada como duplicada / fora de contexto.
+
+        Regra simples:
+          - seq novo  -> NÃO é duplicado (False)
+          - seq igual + RETX -> duplicado (True)
+          - seq mais antigo  -> tratamos como lixo antigo (True)
+        """
+        last = self.ml_last_seq.get(stream_id)
+
+        # primeira vez ou seq mais recente -> aceitamo-la e atualizamos
+        if last is None or header.seq > last:
+            self.ml_last_seq[stream_id] = header.seq
+            return False
+
+        # seq igual e RETX → duplicado esperado (retransmissão)
+        if header.seq == last and ml.is_flag_set(header.flags, ml.FLAG_RETX):
+            return True
+
+        # seq mais antigo do que o que já vimos → lixo antigo
+        return True
+
+    def _ml_is_duplicate(self, stream_id: int, header: ml.MLHeader) -> bool:
+            """
+            Devolve True se esta mensagem ML for um duplicado recente
+            (mesmo seq + flag RETX) para este stream_id.
+            Atualiza self.ml_last_seq com o último seq visto.
+            """
+    
     def _ml_handle_ready(self, stream_id: int, header: ml.MLHeader, addr):
         print(f"[NaveMae/ML] READY de rover {stream_id} (seq={header.seq})")
 
+        # Escolher missão (ou None se não houver)
         missao = self._ml_escolher_missao(stream_id)
+
         if missao is None:
             # Não há missão -> NOMISSION
             msg = ml.build_message(
@@ -131,19 +198,24 @@ class NaveMae:
             print(f"[NaveMae/ML] → NOMISSION para rover {stream_id}")
             return
 
-        mission_id, task_type, x, y, radius = missao
-        payload = ml.build_payload_mission(mission_id, task_type, x, y, radius)
+        # missao = (mission_id, task_type, x, y, radius, duracao)
+        mission_id, task_type, x, y, radius, duracao = missao
 
-        # Guardar estado da missão
+        # Payload da missão (já com duracao)
+        payload = ml.build_payload_mission(mission_id, task_type, x, y, radius, duracao)
+
+        # Guardar estado interno da missão para este rover
         self.ml_estado[stream_id] = {
             "mission_id": mission_id,
             "task_type": task_type,
             "target": (x, y),
             "radius": radius,
+            "duracao": duracao,
             "ultimo_progress": None,
             "done": False,
         }
 
+        # Enviar MISSION com piggyback do ACK ao READY
         msg = ml.build_message(
             msg_type=ml.TYPE_MISSION,
             seq=self._prox_seq_ml(),
@@ -153,9 +225,12 @@ class NaveMae:
             flags=ml.FLAG_NEEDS_ACK,
         )
         self.ml_sock.sendto(msg, addr)
-        print(f"[NaveMae/ML] → MISSION {mission_id} para rover {stream_id}")
+        print(f"[NaveMae/ML] → MISSION {mission_id} para rover {stream_id} (duracao={duracao})")
 
 
+    #PROGRESS sem missão ativa / missão errada → loga e manda ACK, não mexe em estado.
+    #PROGRESS duplicado (seq repetido com RETX, ou mais antigo) → só manda ACK, não volta a “avançar” missão.
+    #PROGRESS novo → atualiza ml_estado[stream_id]["ultimo_progress"] e manda ACK.
     def _ml_handle_progress(self, stream_id: int, header: ml.MLHeader, payload: bytes, addr):
         try:
             info = ml.parse_payload_progress(payload)
@@ -163,7 +238,46 @@ class NaveMae:
             print(f"[NaveMae/ML] PROGRESS inválido de rover {stream_id}: {exc}")
             return
 
-        # Garantir entrada no dicionário
+        mission_id = info["mission_id"]
+
+        # 1) Ver se há missão ativa para este rover
+        estado = self.ml_estado.get(stream_id)
+        if not estado or estado.get("mission_id") != mission_id:
+            # PROGRESS de missão desconhecida / já fechada
+            print(
+                f"[NaveMae/ML] PROGRESS fora de contexto de rover {stream_id}: "
+                f"missao={mission_id} (sem missão ativa correspondente)"
+            )
+            # Podemos mesmo assim enviar ACK para o rover parar de chatear
+            ack_msg = ml.build_message(
+                msg_type=ml.TYPE_ACK,
+                seq=self._prox_seq_ml(),
+                ack=header.seq,
+                stream_id=stream_id,
+                payload=b"",
+                flags=ml.FLAG_ACK_ONLY,
+            )
+            self.ml_sock.sendto(ack_msg, addr)
+            return
+
+        # 2) Ver se é duplicado (seq repetido / antigo)
+        if self._ml_is_duplicate(stream_id, header):
+            print(
+                f"[NaveMae/ML] PROGRESS duplicado/lixo de rover {stream_id} "
+                f"(seq={header.seq}) → só reenviar ACK"
+            )
+            ack_msg = ml.build_message(
+                msg_type=ml.TYPE_ACK,
+                seq=self._prox_seq_ml(),
+                ack=header.seq,
+                stream_id=stream_id,
+                payload=b"",
+                flags=ml.FLAG_ACK_ONLY,
+            )
+            self.ml_sock.sendto(ack_msg, addr)
+            return
+
+        # 3) Mensagem nova e válida → atualiza estado
         self.ml_estado.setdefault(stream_id, {})
         self.ml_estado[stream_id]["ultimo_progress"] = info
 
@@ -174,7 +288,7 @@ class NaveMae:
             f"pos=({info['x']:.1f},{info['y']:.1f})"
         )
 
-        # Enviar ACK do PROGRESS
+        # 4) Enviar ACK do PROGRESS
         ack_msg = ml.build_message(
             msg_type=ml.TYPE_ACK,
             seq=self._prox_seq_ml(),
@@ -185,7 +299,7 @@ class NaveMae:
         )
         self.ml_sock.sendto(ack_msg, addr)
 
-
+    
     def _ml_handle_done(self, stream_id: int, header: ml.MLHeader, payload: bytes, addr):
         try:
             info = ml.parse_payload_done(payload)
@@ -196,7 +310,44 @@ class NaveMae:
         mission_id = info["mission_id"]
         result_code = info["result_code"]
 
-        estado = self.ml_estado.get(stream_id, {})
+        estado = self.ml_estado.get(stream_id)
+
+        # 1) Ver se já temos estado de missão para este rover
+        if not estado or estado.get("mission_id") != mission_id:
+            print(
+                f"[NaveMae/ML] DONE fora de contexto de rover {stream_id}: "
+                f"missao={mission_id} (sem missão ativa correspondente)"
+            )
+            # Podemos responder com ACK para o rover parar de tentar
+            ack_msg = ml.build_message(
+                msg_type=ml.TYPE_ACK,
+                seq=self._prox_seq_ml(),
+                ack=header.seq,
+                stream_id=stream_id,
+                payload=b"",
+                flags=ml.FLAG_ACK_ONLY,
+            )
+            self.ml_sock.sendto(ack_msg, addr)
+            return
+
+        # 2) Ver se é duplicado / retransmissão de um DONE já visto
+        if self._ml_is_duplicate(stream_id, header) or estado.get("done"):
+            print(
+                f"[NaveMae/ML] DONE duplicado de rover {stream_id} "
+                f"para missao={mission_id} → só reenviar ACK"
+            )
+            ack_msg = ml.build_message(
+                msg_type=ml.TYPE_ACK,
+                seq=self._prox_seq_ml(),
+                ack=header.seq,
+                stream_id=stream_id,
+                payload=b"",
+                flags=ml.FLAG_ACK_ONLY,
+            )
+            self.ml_sock.sendto(ack_msg, addr)
+            return
+
+        # 3) Primeiro DONE válido para esta missão
         estado["done"] = True
         self.ml_estado[stream_id] = estado
 
