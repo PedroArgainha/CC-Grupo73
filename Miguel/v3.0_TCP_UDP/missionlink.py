@@ -205,7 +205,8 @@ def parse_message(data: bytes) -> Tuple[MLHeader, bytes]:
 # x         : float32
 # y         : float32
 # radius    : float32
-MISSION_FORMAT = "!BBfff"
+# duracao   : float32
+MISSION_FORMAT = "!BBffff"
 MISSION_SIZE = struct.calcsize(MISSION_FORMAT)
 
 
@@ -215,9 +216,10 @@ def build_payload_mission(
     x: float,
     y: float,
     radius: float,
+    duracao: float,
 ) -> bytes:
     """Constrói payload binário de uma MISSION."""
-    return struct.pack(MISSION_FORMAT, mission_id, task_type, x, y, radius)
+    return struct.pack(MISSION_FORMAT, mission_id, task_type, x, y, radius, duracao)
 
 
 def parse_payload_mission(payload: bytes) -> Dict[str, Any]:
@@ -230,13 +232,14 @@ def parse_payload_mission(payload: bytes) -> Dict[str, Any]:
             f"Payload MISSION com tamanho inválido "
             f"(esperado={MISSION_SIZE}, real={len(payload)})"
         )
-    mission_id, task_type, x, y, radius = struct.unpack(MISSION_FORMAT, payload)
+    mission_id, task_type, x, y, radius, duracao = struct.unpack(MISSION_FORMAT, payload)
     return {
         "mission_id": mission_id,
         "task_type": task_type,
         "x": x,
         "y": y,
         "radius": radius,
+        "duracao": duracao,
     }
 
 
@@ -317,5 +320,4 @@ def parse_payload_done(payload: bytes) -> Dict[str, Any]:
 def is_flag_set(flags: int, flag: int) -> bool:
     """util testar flags (NEEDS_ACK, ACK_ONLY, RETX)."""
     return (flags & flag) != 0
-
 

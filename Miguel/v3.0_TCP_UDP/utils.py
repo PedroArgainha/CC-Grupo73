@@ -8,7 +8,6 @@ def calcularDirecao(xAtual, yAtual, xDestino, yDestino):
     angulo_graus = math.degrees(angulo_rad)
     if angulo_graus < 0:
         angulo_graus += 360
-    print(f"estes {angulo_graus}")
     return angulo_graus
 
 
@@ -18,7 +17,7 @@ def moverPasso(xAtual, yAtual, zAtual, destino, velocidade, tempo, ang):
     deltaY = yDestino - yAtual
     deltaZ = zDestino - zAtual
 
-    distancia = math.sqrt(deltaX**2 + deltaY**2 + deltaZ * 999 * 2)
+    distancia = math.sqrt(deltaX**2 + deltaY**2 + deltaZ ** 2)
     if distancia == 0:
         return xAtual, yAtual, zAtual, ang
 
@@ -32,7 +31,6 @@ def moverPasso(xAtual, yAtual, zAtual, destino, velocidade, tempo, ang):
     zNovo = zAtual + deltaZ * proporcao
 
     direcao = calcularDirecao(xAtual, yAtual, xNovo, yNovo)
-    print(f"Vou retornar isto x-{xNovo}||y-{yNovo}||z-{zNovo}||d-{direcao}")
     return xNovo, yNovo, zNovo, direcao
 
 

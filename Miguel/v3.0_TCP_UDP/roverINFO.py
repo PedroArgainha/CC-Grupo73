@@ -27,7 +27,7 @@ class Rover:
     dirty: bool = False
     missao:int = 0
     progresso: int = 0
-    duracao: int = 0
+    duracao: int = 60
 
     def updateInfo (self,x,y,z,destino,vel,dir,bat,estado,proc,sto,sens,freq,missao,pro):
         if (self.pos_x != x):
@@ -122,6 +122,11 @@ class Rover:
     def iterar(self):
         if estaNoDestino(self.pos_x, self.pos_y, self.pos_z, self.destino):
             self.pos_x, self.pos_y, self.pos_z = self.destino
+            if self.progresso==100:
+                print("\033[91m Acabei\033[0m")
+                self.progresso = 0
+                self.missao = 0
+                self.state = 0
             if self.missao:
                 self.state = 1
                 self.progresso = updateWork (self.missao,self.progresso,self.duracao)
@@ -132,6 +137,7 @@ class Rover:
     def resetarWork(self):
         self.missao = 0
         self.progresso = 0
+        self.state = 0
 
     def atribiuMission(self,miss):
         self.missao = miss

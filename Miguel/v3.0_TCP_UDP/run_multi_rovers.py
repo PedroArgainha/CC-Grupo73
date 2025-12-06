@@ -5,7 +5,7 @@ from roverAPI import RoverAPI
 def main():
     host = "127.0.0.1"
     port = 6000
-
+    i=1
     # (id, destino(x,y,z), velocidade, tick)
     config = [
         (1, (10, 0, 0), 1.0, 0.5,2),
@@ -22,9 +22,12 @@ def main():
         r.definirDestino(dest)
         r.definirVelocidade(vel)
         r.atribuir_missao(miss)
+        print (f"atribui a missao {miss} ao rover {i}")
         r.iniciar()
+        r.iniciarMissionLink()
         rovers.append(r)
         print(f"[Rover {rid}] iniciou -> destino={dest} vel={vel} tick={tick}")
+        i+=1
 
     print(f"[Run] {len(rovers)} rovers a enviar para {host}:{port}. Arranca a Nave Mãe noutra consola.")
     try:

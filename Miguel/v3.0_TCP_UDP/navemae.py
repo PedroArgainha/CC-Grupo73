@@ -214,7 +214,8 @@ class NaveMae:
             "ultimo_progress": None,
             "done": False,
         }
-
+        self.rovers[stream_id-1].atribiuMission(mission_id)
+        print(f"\033[91m Atribui a missao {mission_id} ao rover {stream_id}\033[0m")
         # Enviar MISSION com piggyback do ACK ao READY
         msg = ml.build_message(
             msg_type=ml.TYPE_MISSION,
@@ -465,7 +466,7 @@ class NaveMae:
             #print(mensagem)
             #faltaSaber como por destino
             realIndex = hdr.id_rover - 1
-            self.rovers[realIndex].updateInfo(hdr.pos_x,hdr.pos_y,hdr.pos_z,(0,0,0),pl.velocidade,pl.direcao,hdr.bateria,hdr.state,pl.proc_use,pl.storage,pl.sensores,hdr.freq,hdr.miss,pl.progresso)
+            self.rovers[realIndex].updateInfo(hdr.pos_x,hdr.pos_y,hdr.pos_z,(0,0,0),pl.velocidade,pl.direcao,hdr.bateria,hdr.state,pl.proc_use,pl.storage,pl.sensores,hdr.freq,self.rovers[realIndex].missao,pl.progresso)
             print (f"Recebi Rover {hdr.id_rover}\n")
             return
         if tipo in (ts.TYPE_END, ts.TYPE_FIN, 3):

@@ -46,7 +46,6 @@ class RoverAPI:
         return s
 
     def atribuir_missao(self, miss: int):
-        """Setter simples, caso queiras atribuir missão manualmente (não é o normal em ML)."""
         self.rover.atribiuMission(miss)
 
     def send_reliable(self, msg_bytes: bytes, seq: int, addr, timeout: float = 0.5, max_retries: int = 5) -> bool:
@@ -121,7 +120,6 @@ class RoverAPI:
         self.threadEnvio.start()
 
     def parar(self):
-        """Pede paragem, fecha TCP e UDP e espera (um pouco) pelos threads."""
         self.eventoParar.set()
         self._fecharLigacao()  # fecha ligação TCP
 
@@ -394,7 +392,7 @@ class RoverAPI:
                             # Condição de fim de missão:
                             #   - chegou suficientemente perto do destino
                             #   - OU o progresso já atingiu 100%
-                            if dist <= radius or percent >= 100:
+                            if percent >= 100:
                                 print(
                                     f"[Rover {self.rover.id}] missão {mission_id} concluída "
                                     f"(dist={dist:.2f}, prog={percent}%)."
