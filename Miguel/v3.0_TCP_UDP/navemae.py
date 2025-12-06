@@ -125,14 +125,6 @@ class NaveMae:
 
 
     def _ml_escolher_missao(self, stream_id: int):
-            """
-            Decide que missão atribuir ao rover 'stream_id'.
-
-            Retorna:
-            (mission_id, task_type, x, y, radius, duracao)
-            ou
-            None se não houver missão disponível.
-            """
 
             # TODO: aqui podes pôr lógica real (fila de missões, etc.)
 
@@ -148,15 +140,6 @@ class NaveMae:
 
     # ================== MissionLink handlers ==================
     def _ml_is_duplicate(self, stream_id: int, header: ml.MLHeader) -> bool:
-        """
-        Atualiza o último seq visto para este stream_id e diz se esta
-        mensagem deve ser tratada como duplicada / fora de contexto.
-
-        Regra simples:
-          - seq novo  -> NÃO é duplicado (False)
-          - seq igual + RETX -> duplicado (True)
-          - seq mais antigo  -> tratamos como lixo antigo (True)
-        """
         last = self.ml_last_seq.get(stream_id)
 
         # primeira vez ou seq mais recente -> aceitamo-la e atualizamos
