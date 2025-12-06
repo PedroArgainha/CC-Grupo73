@@ -9,7 +9,7 @@ TYPE_INFO = 2
 TYPE_END = 3
 TYPE_FIN = 4
 
-HEADER_FMT = ">BBBBBBBIIB"  # 7 bytes + 4 + 4 + 1 = 16
+HEADER_FMT = ">BBBBBBBIIBB"  # 7 bytes + 4 + 4 + 1 = 16
 HEADER_SIZE = struct.calcsize(HEADER_FMT)
 PAYLOAD_SIZE = 5  #proc_use, storage, velocidade, direcao, sensores
 
@@ -30,6 +30,7 @@ class Header:
     checksum: int
     payload_len: int
     freq: int
+    miss: int
 
 
 @dataclass
@@ -39,6 +40,7 @@ class Payload:
     velocidade: int
     direcao: int
     sensores: int
+    progresso: int
 
 
 @dataclass
@@ -54,6 +56,7 @@ def criarPayloadDoRover(rover) -> Payload:
         velocidade=limitarByte(rover.velocidade),
         direcao=limitarByte(rover.direcao),
         sensores=limitarByte(rover.sensores),
+        progresso=limitarByte(rover.progresso),
     )
 
 
@@ -81,6 +84,7 @@ def codificarFrame(tipo: int, rover, freq: int) -> bytes:
         checksum=checksum,
         payload_len=payload_len,
         freq=limitarByte(freq),
+        miss=limitarByte(rover.missao),
     )
     header_bytes = struct.pack(
         HEADER_FMT,
@@ -94,6 +98,7 @@ def codificarFrame(tipo: int, rover, freq: int) -> bytes:
         header.checksum,
         header.payload_len,
         header.freq,
+        header.miss
     )
     return header_bytes + payload_bytes
 

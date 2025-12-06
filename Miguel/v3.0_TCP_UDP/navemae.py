@@ -465,7 +465,7 @@ class NaveMae:
             #print(mensagem)
             #faltaSaber como por destino
             realIndex = hdr.id_rover - 1
-            self.rovers[realIndex].updateInfo(hdr.pos_x,hdr.pos_y,hdr.pos_z,(0,0,0),pl.velocidade,pl.direcao,hdr.bateria,hdr.state,pl.proc_use,pl.storage,pl.sensores,hdr.freq,hdr.miss,hdr.progresso)
+            self.rovers[realIndex].updateInfo(hdr.pos_x,hdr.pos_y,hdr.pos_z,(0,0,0),pl.velocidade,pl.direcao,hdr.bateria,hdr.state,pl.proc_use,pl.storage,pl.sensores,hdr.freq,hdr.miss,pl.progresso)
             print (f"Recebi Rover {hdr.id_rover}\n")
             return
         if tipo in (ts.TYPE_END, ts.TYPE_FIN, 3):
