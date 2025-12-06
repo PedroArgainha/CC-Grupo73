@@ -140,27 +140,34 @@ class NaveMae:
 
     # ================== MissionLink handlers ==================
     def _ml_is_duplicate(self, stream_id: int, header: ml.MLHeader) -> bool:
+        """
+        Devolve True se esta mensagem ML for duplicada/antiga para este stream_id.
+        Atualiza self.ml_last_seq com o último seq "bom" visto.
+        Regras:
+        - primeira vez → não é duplicado
+        - seq > last   → nova → não é duplicado
+        - seq == last  → duplicado (com ou sem RETX)
+        - seq < last   → lixo antigo
+        """
         last = self.ml_last_seq.get(stream_id)
 
-        # primeira vez ou seq mais recente -> aceitamo-la e atualizamos
-        if last is None or header.seq > last:
+        if last is None:
+            # primeira mensagem deste rover
             self.ml_last_seq[stream_id] = header.seq
             return False
 
-        # seq igual e RETX → duplicado esperado (retransmissão)
-        if header.seq == last and ml.is_flag_set(header.flags, ml.FLAG_RETX):
+        if header.seq > last:
+            # mensagem nova → aceitá-la e atualizar
+            self.ml_last_seq[stream_id] = header.seq
+            return False
+
+        if header.seq == last:
+            # duplicado (pode ser RETX ou duplicado de rede)
             return True
 
-        # seq mais antigo do que o que já vimos → lixo antigo
+        # header.seq < last → lixo atrasado
         return True
 
-    def _ml_is_duplicate(self, stream_id: int, header: ml.MLHeader) -> bool:
-            """
-            Devolve True se esta mensagem ML for um duplicado recente
-            (mesmo seq + flag RETX) para este stream_id.
-            Atualiza self.ml_last_seq com o último seq visto.
-            """
-    
     def _ml_handle_ready(self, stream_id: int, header: ml.MLHeader, addr):
         print(f"[NaveMae/ML] READY de rover {stream_id} (seq={header.seq})")
 
