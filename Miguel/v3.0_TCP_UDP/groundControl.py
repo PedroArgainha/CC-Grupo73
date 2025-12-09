@@ -1,6 +1,8 @@
 import json
 import argparse
-from websocket import WebSocketApp
+import threading
+import asyncio
+import websockets
 
 from roverINFO import Rover
 from missoes import int_to_mission
@@ -145,14 +147,27 @@ class GroundControl:
                 self.missoes[rid] = self.rovers[rid].missao
 
     def start_ws(self):
-        self.ws_app = WebSocketApp(
-            self.url,
-            on_open=self._on_open,
-            on_close=self._on_close,
-            on_error=self._on_error,
-            on_message=self._on_message,
+        async def ws_coroutine():
+            while True:
+                try:
+                    async with websockets.connect(self.url) as ws:
+                        # ligação estabelecida
+                        self._on_open(ws)
+                        try:
+                            async for message in ws:
+                                self._on_message(ws, message)
+                        except websockets.ConnectionClosed as e:
+                            self._on_close(ws, e.code, e.reason)
+                except Exception as e:
+                    self._on_error(None, e)
+                    # espera 2 segundos e tenta outra vez
+                    await asyncio.sleep(2)
+
+        # corre o loop async numa thread em background
+        self.ws_thread = threading.Thread(
+            target=lambda: asyncio.run(ws_coroutine()),
+            daemon=True,
         )
-        self.ws_thread = threading.Thread(target=self.ws_app.run_forever, daemon=True)
         self.ws_thread.start()
 
     
@@ -174,9 +189,5 @@ if __name__ == "__main__":
         print("\n[GC] Interrompido pelo utilizador.")
     finally:
         print("[GC] A terminar ligações...")
-        if gc.ws_app is not None:
-            try:
-                gc.ws_app.close()
-            except Exception:
-                pass
+
 
