@@ -32,7 +32,7 @@ class GroundControl:
         self.missoes = [0] * roversN
         self.estadoRovers = [None] * roversN
         while i<roversN:
-            rover = Rover(id=i)
+            rover = Rover(id=i + 1)
             self.rovers.append(rover)
 
             i+=1
@@ -141,10 +141,12 @@ class GroundControl:
             if rid is None:
                 print("Sem updates para mostar")
                 continue
+            
+            idx = rid - 1
             if 0 <= rid < self.nRovers:
-                self.rovers[rid].update_from_dict(rdata)
-                self.estadoRovers[rid] = True
-                self.missoes[rid] = self.rovers[rid].missao
+                self.rovers[idx].update_from_dict(rdata)
+                self.estadoRovers[idx] = True
+                self.missoes[idx] = self.rovers[idx].missao
 
     def start_ws(self):
         async def ws_coroutine():
