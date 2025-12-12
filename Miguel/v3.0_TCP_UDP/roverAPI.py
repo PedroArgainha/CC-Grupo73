@@ -304,19 +304,16 @@ class RoverAPI:
                         print(f"[Rover {self.rover.id}] recebi missão: {miss}")
 
                         mission_id = miss["mission_id"]
-                        task_type=miss["task_type"]
                         x = miss["x"]
                         y = miss["y"]
                         radius = miss["radius"]
                         duracao = miss["duracao"]   # ML já tem este campo
 
-                        self.rover.current_mission_id = mission_id  # guardar id da missão atual
-
                         # Atualizar destino do Rover com base na missão (Z mantém-se)
                         self.rover.destino = (x, y, self.rover.pos_z)
 
                         # Atualizar info de missão no Rover
-                        self.rover.atribiuMission(task_type)  # missão em formato int
+                        self.rover.atribiuMission(mission_id)  # missão em formato int
                         self.rover.duracao = duracao           # usado pelo updateWork
                         self.rover.progresso = 0               # começa a 0%
                         self.rover.state = 1                   # "a realizar trabalho"
@@ -344,8 +341,7 @@ class RoverAPI:
                         # ========================================================
                         while not self.eventoParar.is_set():
                             # Se por algum motivo a missão mudou externamente, saímos
-                            if getattr(self.rover, "current_mission_id", None) != mission_id:
-                         
+                            if self.rover.missao != mission_id:
                                 print(f"[Rover {self.rover.id}] missão mudou durante PROGRESS, a sair do ciclo.")
                                 break
 
@@ -396,7 +392,7 @@ class RoverAPI:
                             # Condição de fim de missão:
                             #   - chegou suficientemente perto do destino
                             #   - OU o progresso já atingiu 100%
-                            if percent >= 100:
+                            if wpercent >= 100:
                                 print(
                                     f"[Rover {self.rover.id}] missão {mission_id} concluída "
                                     f"(dist={dist:.2f}, prog={percent}%)."
@@ -436,7 +432,7 @@ class RoverAPI:
                         # Limpar estado de missão no rover
                         self.rover.state = 0          # rover volta a idle
                         self.rover.resetarWork()      # limpar missao + progresso
-                        self.rover.current_mission_id = None        
+
                         # missão concluída → volta ao READY (próxima iteração do while)
                         continue
 

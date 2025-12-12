@@ -26,7 +26,7 @@ class Rover:
     freq: int = 0.4  # mensagens por segundo
     dirty: bool = False
     missao:int = 0
-    progresso: float = 0.0
+    progresso: int = 0
     duracao: int = 60
 
     def updateInfo (self,x,y,z,destino,vel,dir,bat,estado,proc,sto,sens,freq,missao,pro):
@@ -152,17 +152,10 @@ class Rover:
         else:
             return "Erro"
 
-    def _safe_mission_name(self) -> str:
-        try:
-            return int_to_mission(self.missao)
-        except Exception:
-            return f"DESCONHECIDA({self.missao})"
-
-
     def to_string(self) -> str:
         return (
             f"[Rover {self.id}]\n"
-            f"  -> Missao atual= {self._safe_mission_name()} || Progresso={self.progresso}%\n"
+            f"  -> Missao atual= {int_to_mission(self.missao)} || Progresso={self.progresso}%\n"
             f"  -> loc=({self.pos_x}, {self.pos_y}, {self.pos_z}) freq={self.freq}/s\n"
             f"  -> bat={self.bateria}% estado={self.traduzEstado()}\n"
             f"  -> proc={self.proc_use} storage={self.storage} "
@@ -171,7 +164,7 @@ class Rover:
 
     def to_stringProgresso(self) -> str:
         return (
-            f"  -> Missao atual= {self._safe_mission_name()} || Progresso={self.progresso}%\n"
+            f"  -> Missao atual= {int_to_mission(self.missao)} || Progresso={self.progresso}%\n"
             f"[ -> Atribuida ao Rover {self.id}]\n"
         )
 
