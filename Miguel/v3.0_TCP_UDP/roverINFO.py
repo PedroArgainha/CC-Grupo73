@@ -7,6 +7,8 @@ from utils import moverPasso, estaNoDestino
 from missoes import updateWork,int_to_mission
 
 
+contador = 0
+
 @dataclass
 class Rover:
 

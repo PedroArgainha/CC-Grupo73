@@ -14,7 +14,7 @@ import time
 import argparse
 import random
 
-
+contador = 0
 
 
 
@@ -174,7 +174,9 @@ class NaveMae:
         if not self.tarefas:
             self.gerar_tarefas(3)
 
-        missao = self.tarefas.pop(0)
+        missao = self.criaTarefa(contador)
+        contador = contador + 1
+        #missao = self.tarefas.pop(0)
 
         if missao is None:
             # Não há missão -> NOMISSION
