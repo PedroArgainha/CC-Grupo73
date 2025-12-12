@@ -3,7 +3,7 @@ from roverAPI import RoverAPI
 
 
 def main():
-    host = "127.0.0.1"
+    host = "10.0.0.10"
     port = 6000
     i=1
     # (id, destino(x,y,z), velocidade, tick)
