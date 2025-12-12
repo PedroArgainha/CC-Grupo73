@@ -9,7 +9,7 @@ def generate_missions(scenario: int):
     def gen(mid: int, duracao_min: int = 30, duracao_max: int = 60):
         return {
             "mission_id": mid,
-            "task_type": 0,
+            "task_type": rng.randint(1, 6),
             "x": float(rng.randint(-10, 10)),
             "y": float(rng.randint(-10, 10)),
             "radius": float(rng.randint(1, 4)),
@@ -19,7 +19,7 @@ def generate_missions(scenario: int):
     if scenario == 0:
         return []                      # sem missões
 
-    if scenario == 1:
+    if scenario == 1:\
         # Uma missão com duração maior (120-300s)
         return [gen(1, duracao_min=120, duracao_max=300)]
 

@@ -26,7 +26,7 @@ class Rover:
     freq: int = 0.4  # mensagens por segundo
     dirty: bool = False
     missao:int = 0
-    progresso: int = 0
+    progresso: float = 0.0
     duracao: int = 60
 
     def updateInfo (self,x,y,z,destino,vel,dir,bat,estado,proc,sto,sens,freq,missao,pro):

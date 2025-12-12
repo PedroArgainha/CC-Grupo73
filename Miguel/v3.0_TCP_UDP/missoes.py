@@ -23,7 +23,7 @@ def int_to_mission(missao: int) -> str:
     raise ValueError(f"ID de missão desconhecido: {missao}")
 
 
-def updateWork(valor: int, proAtual: int, dur: int) -> int:
+def updateWork(valor: int, proAtual: float, dur: int) -> float:
     incremento = {
         0: 0,
         1: 2,
@@ -36,10 +36,12 @@ def updateWork(valor: int, proAtual: int, dur: int) -> int:
 
     if valor not in incremento:
         raise ValueError("Valor fora do intervalo permitido (0-6)")
-    
+
     inc_base = incremento[valor]
-    inc_escalado = inc_base * (dur / 60)
-    return min(int(proAtual + inc_escalado), 100)
+    inc_escalado = inc_base * (dur / 60.0)
+
+    # acumula SEM truncar
+    return min(proAtual + inc_escalado, 100.0)
 
 
 
