@@ -80,7 +80,7 @@ class GroundControl:
         print ("2 -> Ver Rovers ativos")
         print ("3 -> Ver Estado dos rovers")
         print ("4 -> Sair")
-        self.rodape(menu)
+        self.rodape(menu)   
         opcao = getInput("Introduza a sua opção ->",1,4)
         if opcao==1:
             self.printMissoes()
@@ -143,7 +143,7 @@ class GroundControl:
                 continue
             
             idx = rid - 1
-            if 0 <= rid < self.nRovers:
+            if 0 <= idx < self.nRovers:
                 self.rovers[idx].update_from_dict(rdata)
                 self.estadoRovers[idx] = True
                 self.missoes[idx] = self.rovers[idx].missao

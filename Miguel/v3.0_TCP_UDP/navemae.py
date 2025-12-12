@@ -7,6 +7,7 @@ import ts
 import utils as utils
 import missionlink as ml
 from roverINFO import Rover
+from mission_scenarios import generate_missions
 
 from websocket_server import WebsocketServer
 import json
@@ -16,7 +17,7 @@ import argparse
 
 class NaveMae:
 
-    def __init__(self,roversN: int, host: str = "0.0.0.0", port: int = 6000):
+    def __init__(self,roversN: int, host: str = "0.0.0.0", port: int = 6000, scenario: int=2):
         self.host = host
         self.port = port
 
@@ -44,9 +45,18 @@ class NaveMae:
         self.nRovers = roversN
         self.rovers = []
         while i<roversN:
-            rover = Rover(id=i)
+            rover = Rover(id=i+1)
             self.rovers.append(rover)
             i+=1
+        
+        self.scenario = scenario
+        self.missions_pending = generate_missions(scenario)
+        self.missions_assigned = {}
+        self.missions_done = []
+
+        if scenario == 3:
+            self.rr_idx = 0
+
 
         # ================== MissionLink helpers ==================
 
@@ -126,17 +136,39 @@ class NaveMae:
 
     def _ml_escolher_missao(self, stream_id: int):
 
-            # TODO: aqui podes pôr lógica real (fila de missões, etc.)
+        # Se já tem missão (retransmissões)
+        if stream_id in self.missions_assigned:
+            m = self.missions_assigned[stream_id]
+            return (m["mission_id"], m["task_type"],
+                    m["x"], m["y"], m["radius"], m["duracao"])
 
-            # Exemplo “hardcoded” só para testar:
-            mission_id = 1         # por ex. "Tirar fotos"
-            task_type = 0          # por enquanto não estás a usar muito isto
-            x = 10.0
-            y = 5.0
-            radius = 2.0
-            duracao = 60.0         # 60 (segundos) – consistente com missoes.updateWork
+        # Round-robin
+        if self.scenario == 3:
+            if not self.missions_pending:
+                return None
 
-            return (mission_id, task_type, x, y, radius, duracao)
+            assigned_ids = {m["mission_id"] for m in self.missions_assigned.values()}
+
+            for _ in range(len(self.missions_pending)):
+                m = self.missions_pending[self.rr_idx]
+                self.rr_idx = (self.rr_idx + 1) % len(self.missions_pending)
+
+                if m["mission_id"] not in assigned_ids:
+                    self.missions_assigned[stream_id] = m
+                    return (m["mission_id"], m["task_type"],
+                            m["x"], m["y"], m["radius"], m["duracao"])
+
+            return None
+
+        # Cenários finitos
+        if not self.missions_pending:
+            return None
+
+        m = self.missions_pending.pop(0)
+        self.missions_assigned[stream_id] = m
+        return (m["mission_id"], m["task_type"],
+                m["x"], m["y"], m["radius"], m["duracao"])
+
 
     # ================== MissionLink handlers ==================
     def _ml_is_duplicate(self, stream_id: int, header: ml.MLHeader) -> bool:
@@ -503,9 +535,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Nave Mãe minimal para frames TS.")
     parser.add_argument("--host", default="0.0.0.0", help="endereço para escutar")
     parser.add_argument("--port", type=int, default=6000, help="porto TCP para aceitar rovers")
+    parser.add_argument("--scenario", type=int, default=2, help="0=sem missoes | 1=1 missao | 2=varias missoes | 3=round-robin")
+
     args = parser.parse_args()
     roversN = 6
-    nave = NaveMae(roversN,args.host, args.port)
+    nave = NaveMae(roversN,args.host, args.port,scenario=args.scenario)
     nave.iniciar()
     try:
         while True:
