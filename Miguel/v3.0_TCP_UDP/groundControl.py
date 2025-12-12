@@ -32,7 +32,7 @@ class GroundControl:
         self.missoes = [0] * roversN
         self.estadoRovers = [None] * roversN
         while i<roversN:
-            rover = Rover(id=i)
+            rover = Rover(id=i+1)
             self.rovers.append(rover)
 
             i+=1
