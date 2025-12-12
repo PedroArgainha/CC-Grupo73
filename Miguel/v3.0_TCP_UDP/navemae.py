@@ -12,6 +12,7 @@ from websocket_server import WebsocketServer
 import json
 import time
 import argparse
+import random
 
 
 class NaveMae:
@@ -127,12 +128,11 @@ class NaveMae:
     def _ml_escolher_missao(self, stream_id: int):
 
             # TODO: aqui podes pôr lógica real (fila de missões, etc.)
-
             # Exemplo “hardcoded” só para testar:
-            mission_id = 1         # por ex. "Tirar fotos"
+            mission_id = random.randint(1, 6)
             task_type = 0          # por enquanto não estás a usar muito isto
-            x = 10.0
-            y = 5.0
+            x = random.randint(0, 50)
+            y = random.randint(0, 50)
             radius = 2.0
             duracao = 60.0         # 60 (segundos) – consistente com missoes.updateWork
 
