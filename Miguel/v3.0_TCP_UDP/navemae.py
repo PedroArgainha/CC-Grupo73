@@ -192,6 +192,13 @@ class NaveMae:
 
         # missao = (mission_id, task_number, x, y, radius, duracao)
         mission_id, task_number, x, y, radius, duracao = missao
+        print(
+            f"id={missao['mission_id']} "
+            f"type={missao['task_type']} "
+            f"x={missao['x']} "
+            f"y={missao['y']} "
+            f"r={missao['radius']} "
+            f"d={missao['duracao']}")
 
         # Payload da missão (já com duracao)
         payload = ml.build_payload_mission(mission_id, task_number, x, y, radius, duracao)
@@ -208,6 +215,7 @@ class NaveMae:
         }
         self.rovers[stream_id-1].atribiuMission(mission_id)
         print(f"\033[91m Atribui a missao {mission_id} ao rover {stream_id}\033[0m")
+        
         # Enviar MISSION com piggyback do ACK ao READY
         msg = ml.build_message(
             msg_type=ml.TYPE_MISSION,
