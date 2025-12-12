@@ -6,7 +6,8 @@ import websockets
 
 from roverINFO import Rover
 from missoes import int_to_mission
-import threading
+
+from gc_web import STATE, push_event
 
 
 def getInput(texto: str, minimo: int, maximo: int) -> int:
@@ -21,96 +22,118 @@ def getInput(texto: str, minimo: int, maximo: int) -> int:
             print("Entrada inválida. Insira um número inteiro.")
 
 
-
 class GroundControl:
-
-    def __init__(self,roversN: int, host: str = "127.0.0.1", port: int = 2900):
+    def __init__(self, roversN: int, host: str = "127.0.0.1", port: int = 2900):
         self.url = f"ws://{host}:{port}/"
-        i=0
         self.nRovers = roversN
+
         self.rovers = []
-        self.missoes = [0] * roversN
+        self.missoes = [0] * roversN           # guarda task_type (para compatibilidade)
         self.estadoRovers = [None] * roversN
-        while i<roversN:
-            rover = Rover(id=i + 1)
-            self.rovers.append(rover)
 
-            i+=1
+        for i in range(roversN):
+            self.rovers.append(Rover(id=i + 1))
 
-    
-    def cabecalho (self, tipo:str):
-        print (f"=================={tipo}==================\n")
+    # ---------- helpers ----------
 
-    def rodape (self, tipo:str):
+    def _safe_task_name(self, task_type: int) -> str:
+        """Converte task_type -> nome, mas nunca crasha."""
+        try:
+            return int_to_mission(task_type)
+        except Exception:
+            return f"DESCONHECIDA({task_type})"
+
+    def cabecalho(self, tipo: str):
+        print(f"=================={tipo}==================\n")
+
+    def rodape(self, tipo: str):
         tam = len(tipo)
         print("=" * (18 + tam + 18))
         print()
 
-    def printMissoes (self):
-        i=0
+    # ---------- UI ----------
+
+    def printMissoes(self):
         texto = "Lista de Missões atuais"
         self.cabecalho(texto)
-        self.rodape(texto)
-        while i<self.nRovers:
-            print (f"Rover {i+1}\n")
-            print (f"Missão Atual -> {int_to_mission(self.missoes[i])}")
-            i+=1
+
+        for i in range(self.nRovers):
+            r = self.rovers[i]
+            if self.estadoRovers[i] is None:
+                print(f"Rover {i+1}: Sem informação disponível\n")
+            else:
+                mission_id = getattr(r, "mission_id", 0)
+                task_type = r.missao
+                print(f"Rover {i+1}")
+                print(f"  Mission ID -> {mission_id}")
+                print(f"  Task       -> {self._safe_task_name(task_type)} (task_type={task_type})")
+                print(f"  Progresso  -> {r.progresso}%\n")
+
         self.rodape(texto)
 
-
-    def printRoversAtivos (self):
-        i=0
+    def printRoversAtivos(self):
         texto = "Lista de Rovers Ativos"
         self.cabecalho(texto)
+
+        for i in range(self.nRovers):
+            if self.estadoRovers[i] is None:
+                continue
+
+            r = self.rovers[i]
+            # ativo = tem task_type != 0
+            if r.missao != 0:
+                mission_id = getattr(r, "mission_id", 0)
+                task_type = r.missao
+
+                print(f"Rover {i+1}")
+                print(f"  Mission ID -> {mission_id}")
+                print(f"  Task       -> {self._safe_task_name(task_type)} (task_type={task_type})")
+                print(f"  Progresso  -> {r.progresso}%")
+                print("Outra visão do mesmo:\n")
+                print(r.to_stringProgresso())
+                print()
+
         self.rodape(texto)
-        while i<self.nRovers:
-            if self.missoes[i]!=0:
-                print (f"Rover {i+1}\n")
-                print (f"Missão Atual -> {int_to_mission(self.missoes[i])}")
-                print ("Outra visao do mesmo:\n")
-                roverString = self.rovers[i].to_stringProgresso()
-                print (roverString)
-            i+=1
-        self.rodape(texto)
 
-    def menu (self):
-        menu = "Menu"
-        self.cabecalho(menu)
-        print ("1 -> Ver missões")
-        print ("2 -> Ver Rovers ativos")
-        print ("3 -> Ver Estado dos rovers")
-        print ("4 -> Sair")
-        self.rodape(menu)   
-        opcao = getInput("Introduza a sua opção ->",1,4)
-        if opcao==1:
-            self.printMissoes()
-            return 1
-        elif opcao==2:
-            self.printRoversAtivos()
-            return 1
-        elif opcao==3:
-            self.printRovers()
-            return 1
-        elif opcao==4:
-            return 0
-        
-
-        self.rodape(menu)
-
-    def printRovers (self):
+    def printRovers(self):
         texto = "Telemetria mais recente de todos os rovers"
         self.cabecalho(texto)
-        self.rodape(texto)
-        i=0
-        while i<self.nRovers:
-            if self.estadoRovers[i]==None:
-                print (f"Rover {i+1}:\nSem informação disponivel")
+
+        for i in range(self.nRovers):
+            if self.estadoRovers[i] is None:
+                print(f"Rover {i+1}:\nSem informação disponivel\n")
             else:
-                print (f"Rover {i+1}:\n tenho informação disponivel")
-                roverString = self.rovers[i].to_string()
-                print (roverString)
-            i+=1
+                print(f"Rover {i+1}:\nTenho informação disponivel")
+                print(self.rovers[i].to_string())
+                print()
+
         self.rodape(texto)
+
+    def menu(self):
+        menu = "Menu"
+        self.cabecalho(menu)
+        print("1 -> Ver missões")
+        print("2 -> Ver Rovers ativos")
+        print("3 -> Ver Estado dos rovers")
+        print("4 -> Sair")
+        self.rodape(menu)
+
+        opcao = getInput("Introduza a sua opção ->", 1, 4)
+        if opcao == 1:
+            self.printMissoes()
+            return 1
+        elif opcao == 2:
+            self.printRoversAtivos()
+            return 1
+        elif opcao == 3:
+            self.printRovers()
+            return 1
+        elif opcao == 4:
+            return 0
+
+        return 1
+
+    # ---------- WebSocket callbacks ----------
 
     def _on_open(self, ws):
         print(f"[GC] Ligado à Nave-Mãe em {self.url}")
@@ -119,7 +142,7 @@ class GroundControl:
         print(f"[GC] Ligação terminada: {close_status_code} {close_msg}")
 
     def _on_error(self, ws, error):
-        print(f"[GC] Erro WebSocket:", error)
+        print("[GC] Erro WebSocket:", error)
 
     def _on_message(self, ws, message: str):
         try:
@@ -127,6 +150,7 @@ class GroundControl:
         except json.JSONDecodeError:
             print("[GC] Mensagem inválida:", message)
             return
+
         tipo = data.get("type")
         if tipo == "rovers_update":
             self._process_rovers_update(data.get("data", []))
@@ -139,21 +163,27 @@ class GroundControl:
         for rdata in lista_rovers:
             rid = rdata.get("id")
             if rid is None:
-                print("Sem updates para mostar")
+                print("[GC] Sem updates para mostrar (sem id)")
                 continue
-            
+
             idx = rid - 1
             if 0 <= idx < self.nRovers:
                 self.rovers[idx].update_from_dict(rdata)
+
                 self.estadoRovers[idx] = True
+                # mantém compat: isto é task_type
                 self.missoes[idx] = self.rovers[idx].missao
+
+                dash = self._to_dashboard_rover(self.rovers[idx])
+
+                STATE["rovers"][dash["id"]] = dash
+                push_event("rover_update", dash)
 
     def start_ws(self):
         async def ws_coroutine():
             while True:
                 try:
                     async with websockets.connect(self.url) as ws:
-                        # ligação estabelecida
                         self._on_open(ws)
                         try:
                             async for message in ws:
@@ -162,17 +192,65 @@ class GroundControl:
                             self._on_close(ws, e.code, e.reason)
                 except Exception as e:
                     self._on_error(None, e)
-                    # espera 2 segundos e tenta outra vez
                     await asyncio.sleep(2)
 
-        # corre o loop async numa thread em background
         self.ws_thread = threading.Thread(
             target=lambda: asyncio.run(ws_coroutine()),
             daemon=True,
         )
         self.ws_thread.start()
 
-    
+    def _to_dashboard_rover(self, r: Rover):
+        status = (
+            "IDLE" if r.state == 0 else
+            "WORKING" if r.state == 1 else
+            "MOVING" if r.state == 2 else
+            "ERROR" if r.state == 3 else
+            "OFFLINE"
+        )
+
+        mission_id = int(getattr(r, "mission_id", 0))
+        task_type = int(r.missao)
+
+        return {
+            "id": str(r.id),
+            "name": f"ROVER {r.id}",
+            "uuid": f"rover-{r.id}",
+
+            "status": status,
+            "battery": float(r.bateria),
+
+            # NOVO (recomendado)
+            "missionId": mission_id,
+            "taskType": task_type,
+
+            # compat (se o frontend esperava "mission", agora manda mission_id)
+            "mission": str(mission_id),
+
+            "missionProgress": int(r.progresso),
+
+            "position": {
+                "x": float(r.pos_x),
+                "y": float(r.pos_y),
+                "z": float(r.pos_z),
+            },
+
+            "destination": {
+                "x": float(r.destino[0]),
+                "y": float(r.destino[1]),
+                "z": float(r.destino[2]),
+            },
+
+            "speed": float(r.velocidade),
+            "direction": str(r.direcao),
+
+            "cpu": int(r.proc_use),
+            "storage": int(r.storage),
+            "sensors": int(r.sensores),
+            "frequency": str(r.freq),
+        }
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="127.0.0.1", help="Host da Nave-Mãe")
@@ -191,5 +269,3 @@ if __name__ == "__main__":
         print("\n[GC] Interrompido pelo utilizador.")
     finally:
         print("[GC] A terminar ligações...")
-
-
