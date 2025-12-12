@@ -131,6 +131,7 @@ class Rover:
             if self.missao:
                 self.state = 1
                 self.progresso = updateWork (self.missao,self.progresso,self.duracao)
+                print("\033[93mTou a trabalhar!\033[0m")
             return
         self.moverRover()
         self.state = 2

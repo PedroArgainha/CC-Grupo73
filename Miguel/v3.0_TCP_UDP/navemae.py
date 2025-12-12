@@ -174,6 +174,7 @@ class NaveMae:
         if not self.tarefas:
             self.gerar_tarefas(3)
 
+        global contador
         missao = self.criaTarefa(contador)
         contador = contador + 1
         #missao = self.tarefas.pop(0)
