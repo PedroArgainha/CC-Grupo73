@@ -522,7 +522,7 @@ class NaveMae:
                 self.tarefas.append(self.criaTarefa(i))
 
         elif scenario == 3:
-            for i in range(1, 51):
+            for i in range(0, 51):
                 self.tarefas.append(self.criaTarefa(i))
 
         else:
