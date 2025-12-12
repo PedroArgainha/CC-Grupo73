@@ -130,10 +130,10 @@ class NaveMae:
 
     def criaTarefa(self, n: int):
             
-            mission_id = random.randint(0, 6)
+            mission_id = random.randint(1, 6)
             task_number = n+1
-            x = random.randint(0, 50)
-            y = random.randint(0, 50)
+            x = random.randint(0, 15)
+            y = random.randint(0, 15)
             radius = 2.0
 
             teste = random.randint(1, 3)
