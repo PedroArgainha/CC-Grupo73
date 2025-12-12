@@ -11,7 +11,7 @@ TYPE_FIN = 4
 
 HEADER_FMT = ">BBBBBBBIIB"  # 7 bytes + 4 + 4 + 1 = 16
 HEADER_SIZE = struct.calcsize(HEADER_FMT)
-PAYLOAD_SIZE = 6  #proc_use, storage, velocidade, direcao, sensores
+PAYLOAD_SIZE = 9  #proc_use, storage, velocidade, direcao, sensores
 
 
 def limitarByte(valor: float) -> int:
@@ -40,6 +40,9 @@ class Payload:
     direcao: int
     sensores: int
     progresso: int
+    x: int
+    y: int
+    z: int
 
 
 @dataclass
@@ -56,19 +59,25 @@ def criarPayloadDoRover(rover) -> Payload:
         direcao=limitarByte(rover.direcao),
         sensores=limitarByte(rover.sensores),
         progresso=limitarByte(rover.progresso),
+        x=limitarByte(rover.destino[0]),
+        y=limitarByte(rover.destino[1]),
+        z=limitarByte(rover.destino[2]),
     )
 
 
 def codificarFrame(tipo: int, rover, freq: int) -> bytes:
     payload_obj = criarPayloadDoRover(rover)
     payload_bytes = struct.pack(
-        ">BBBBBB",
+        ">BBBBBBBBB",
         payload_obj.proc_use,
         payload_obj.storage,
         payload_obj.velocidade,
         payload_obj.direcao,
         payload_obj.sensores,
-        payload_obj.progresso
+        payload_obj.progresso,
+        payload_obj.x,
+        payload_obj.y,
+        payload_obj.z
     )
     payload_len = len(payload_bytes)
     checksum = zlib.crc32(payload_bytes) & 0xFFFFFFFF
@@ -111,7 +120,7 @@ def lerHeader(buf: bytes) -> Header:
 def lerPayload(buf: bytes) -> Payload:
     if len(buf) < PAYLOAD_SIZE:
         raise ValueError("Payload demasiado curto")
-    vals = struct.unpack(">BBBBBB", buf[:PAYLOAD_SIZE])
+    vals = struct.unpack(">BBBBBBBBB", buf[:PAYLOAD_SIZE])
     return Payload(*vals)
 
 

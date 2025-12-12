@@ -122,7 +122,7 @@ class Rover:
 
     def iterar(self):
         if estaNoDestino(self.pos_x, self.pos_y, self.pos_z, self.destino):
-            print("\033[91m Tou na merda do Destino\033[0m")
+            print("\033[91m Tou no Destino\033[0m")
             self.pos_x, self.pos_y, self.pos_z = self.destino
             if self.progresso==100:
                 print("\033[91m Acabei\033[0m")
