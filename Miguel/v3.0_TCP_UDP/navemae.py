@@ -193,12 +193,12 @@ class NaveMae:
         # missao = (mission_id, task_number, x, y, radius, duracao)
         mission_id, task_number, x, y, radius, duracao = missao
         print(
-            f"id={missao['mission_id']} "
-            f"type={missao['task_type']} "
-            f"x={missao['x']} "
-            f"y={missao['y']} "
-            f"r={missao['radius']} "
-            f"d={missao['duracao']}")
+            f"idM={mission_id} "
+            f"TaskN={task_number} "
+            f"x={x} "
+            f"y={y} "
+            f"r={radius} "
+            f"d={duracao}")
 
         # Payload da missão (já com duracao)
         payload = ml.build_payload_mission(mission_id, task_number, x, y, radius, duracao)
