@@ -7,7 +7,6 @@ import websockets
 from roverINFO import Rover
 from missoes import int_to_mission
 
-from gc_web import STATE, push_event
 
 
 def getInput(texto: str, minimo: int, maximo: int) -> int:
