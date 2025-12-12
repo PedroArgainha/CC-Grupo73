@@ -15,11 +15,17 @@ import argparse
 import random
 
 
+
+
+
 class NaveMae:
 
     def __init__(self,roversN: int, host: str = "0.0.0.0", port: int = 6000):
         self.host = host
         self.port = port
+
+        # ---------- lista tarefas ----------
+        self.tarefas = []
 
         # ---------- Telemetria (TCP) ----------
         self.servidorSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -52,10 +58,7 @@ class NaveMae:
         # ================== MissionLink helpers ==================
 
     def _prox_seq_ml(self) -> int:
-        """
-        Devolve o seq atual e incrementa-o para a próxima mensagem ML.
-        Ajuda a manter o contador de sequência consistente.
-        """
+
         s = self.ml_seq
         self.ml_seq += 1
         return s
@@ -125,30 +128,25 @@ class NaveMae:
             print("Enviei JSON")
 
 
-    def _ml_escolher_missao(self, stream_id: int):
-
-            # TODO: aqui podes pôr lógica real (fila de missões, etc.)
-            # Exemplo “hardcoded” só para testar:
-            mission_id = random.randint(1, 6)
-            task_type = 0          # por enquanto não estás a usar muito isto
+    def criaTarefa(self, n: int):
+            
+            mission_id = random.randint(0, 6)
+            task_number = n+1
             x = random.randint(0, 50)
             y = random.randint(0, 50)
             radius = 2.0
-            duracao = 60.0         # 60 (segundos) – consistente com missoes.updateWork
 
-            return (mission_id, task_type, x, y, radius, duracao)
+            teste = random.randint(1, 3)
+            if teste==1:
+                duracao = random.randint(70, 180)
+            else:
+                duracao = random.randint(45, 60)
+
+            return (mission_id, task_number, x, y, radius, duracao)
 
     # ================== MissionLink handlers ==================
     def _ml_is_duplicate(self, stream_id: int, header: ml.MLHeader) -> bool:
-        """
-        Devolve True se esta mensagem ML for duplicada/antiga para este stream_id.
-        Atualiza self.ml_last_seq com o último seq "bom" visto.
-        Regras:
-        - primeira vez → não é duplicado
-        - seq > last   → nova → não é duplicado
-        - seq == last  → duplicado (com ou sem RETX)
-        - seq < last   → lixo antigo
-        """
+
         last = self.ml_last_seq.get(stream_id)
 
         if last is None:
@@ -172,7 +170,11 @@ class NaveMae:
         print(f"[NaveMae/ML] READY de rover {stream_id} (seq={header.seq})")
 
         # Escolher missão (ou None se não houver)
-        missao = self._ml_escolher_missao(stream_id)
+
+        if not self.tarefas:
+            self.gerar_tarefas(3)
+
+        missao = self.tarefas.pop()
 
         if missao is None:
             # Não há missão -> NOMISSION
@@ -188,16 +190,16 @@ class NaveMae:
             print(f"[NaveMae/ML] → NOMISSION para rover {stream_id}")
             return
 
-        # missao = (mission_id, task_type, x, y, radius, duracao)
-        mission_id, task_type, x, y, radius, duracao = missao
+        # missao = (mission_id, task_number, x, y, radius, duracao)
+        mission_id, task_number, x, y, radius, duracao = missao
 
         # Payload da missão (já com duracao)
-        payload = ml.build_payload_mission(mission_id, task_type, x, y, radius, duracao)
+        payload = ml.build_payload_mission(mission_id, task_number, x, y, radius, duracao)
 
         # Guardar estado interno da missão para este rover
         self.ml_estado[stream_id] = {
             "mission_id": mission_id,
-            "task_type": task_type,
+            "task_number": task_number,
             "target": (x, y),
             "radius": radius,
             "duracao": duracao,
@@ -497,6 +499,27 @@ class NaveMae:
                 print(f"[NaveMae/ML] ACK de rover {sid} (ack={header.ack})")
             else:
                 print(f"[NaveMae/ML] tipo de mensagem desconhecido: {msg_type} de rover {sid}")
+
+    def gerar_tarefas(self, scenario: int):
+        self.tarefas = []
+
+        if scenario == 0:
+            return  # sem tarefas
+
+        if scenario == 1:
+            self.tarefas.append(self.criaTarefa(1))
+
+        elif scenario == 2:
+            for i in range(1, 6):
+                self.tarefas.append(self.criaTarefa(i))
+
+        elif scenario == 3:
+            for i in range(1, 51):
+                self.tarefas.append(self.criaTarefa(i))
+
+        else:
+            raise ValueError("Scenario inválido")
+
 
     
 if __name__ == "__main__":
