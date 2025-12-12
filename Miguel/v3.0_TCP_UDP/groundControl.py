@@ -173,11 +173,6 @@ class GroundControl:
                 # mantém compat: isto é task_type
                 self.missoes[idx] = self.rovers[idx].missao
 
-                dash = self._to_dashboard_rover(self.rovers[idx])
-
-                STATE["rovers"][dash["id"]] = dash
-                push_event("rover_update", dash)
-
     def start_ws(self):
         async def ws_coroutine():
             while True:
