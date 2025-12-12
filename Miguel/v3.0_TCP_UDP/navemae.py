@@ -174,7 +174,7 @@ class NaveMae:
         if not self.tarefas:
             self.gerar_tarefas(3)
 
-        missao = self.tarefas.pop()
+        missao = self.tarefas.pop(0)
 
         if missao is None:
             # Não há missão -> NOMISSION
