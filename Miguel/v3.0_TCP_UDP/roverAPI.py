@@ -392,7 +392,7 @@ class RoverAPI:
                             # Condição de fim de missão:
                             #   - chegou suficientemente perto do destino
                             #   - OU o progresso já atingiu 100%
-                            if wpercent >= 100:
+                            if percent >= 100:
                                 print(
                                     f"[Rover {self.rover.id}] missão {mission_id} concluída "
                                     f"(dist={dist:.2f}, prog={percent}%)."
