@@ -28,6 +28,7 @@ class Rover:
     missao:int = 0
     progresso: int = 0
     duracao: int = 60
+    working: int = 0
 
     def updateInfo (self,x,y,z,destino,vel,dir,bat,estado,proc,sto,sens,freq,missao,pro):
         if (self.pos_x != x):
@@ -128,9 +129,13 @@ class Rover:
                 self.progresso = 0
                 self.missao = 0
                 self.state = 0
+                self.working = 0
             if self.missao:
                 self.state = 1
-                self.progresso = updateWork (self.missao,self.progresso,self.duracao)
+                self.working = self.working + 1
+                ateAgora = self.working/self.duracao * 100
+                self.progresso = min(100, int(ateAgora))
+                #self.progresso = updateWork (self.missao,self.progresso,self.duracao)
                 print("\033[93mTou a trabalhar!\033[0m")
             return
         self.moverRover()
@@ -143,6 +148,7 @@ class Rover:
 
     def atribiuMission(self,miss):
         self.missao = miss
+        self.working = 0
 
     def traduzEstado(self)->str:
         if self.state == 0:
