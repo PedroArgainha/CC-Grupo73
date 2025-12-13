@@ -634,9 +634,9 @@ class NaveMae:
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Nave Mãe minimal para frames TS.")
-    parser.add_argument("--host", default="0.0.0.0", help="endereço para escutar")
-    parser.add_argument("--port", type=int, default=6000, help="porto TCP para aceitar rovers")
-    parse.add_argument("--scenario", type=int, choices=[1, 2, 3, 4], default = 3, help="cenário de missões (1-4)")
+    parser.add_argument("--host", default="0.0.0.0", help="endereço de escuta")
+    parser.add_argument("--port", type=int, default=6000, help="port TCP para aceitar rovers")
+    parser.add_argument("--scenario", type=int, choices=[1, 2, 3, 4], default = 3, help="cenário de missões (1-4)")
     args = parser.parse_args()
     roversN = 3
     nave = NaveMae(roversN,args.host, args.port)
