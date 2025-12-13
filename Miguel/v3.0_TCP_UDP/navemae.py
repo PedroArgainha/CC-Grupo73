@@ -240,17 +240,14 @@ class NaveMae:
         # ============================================================
         missao = None
 
-        if self.scenario in (1, 2, 4):
-            # fila: NÃO fazer pop aqui
-            missao = self.tarefas[0] if self.tarefas else None
-
-        elif self.scenario == 3:
-            # infinito: gera uma missão nova (contador avança só depois no ACK!)
-            missao = self.criaTarefa(self.task_counter+1)
-
-        else:
-            # fallback
-            missao = None
+        # 1) ESCOLHER MISSÃO consoante cenário (só se não houver manual)
+        if missao is None:
+            if self.scenario in (1, 2, 4):
+                missao = self.tarefas[0] if self.tarefas else None
+            elif self.scenario == 3:
+                missao = self.criaTarefa(self.task_counter + 1)
+            else:
+                missao = None
 
         # ============================================================
         # 2) Se não há missão disponível → NOMISSION
@@ -615,34 +612,34 @@ class NaveMae:
             elif msg_type == ml.TYPE_ACK:
                 print(f"[NaveMae/ML] ACK de rover {sid} (ack={header.ack})")
 
-            pending = self.ml_pending_mission.get(sid)
-            if pending is None:
-                continue
+                pending = self.ml_pending_mission.get(sid)
+                if pending is None:
+                    continue
 
-            # 1) Se este ACK confirma a MISSION pendente, libertar o rover
-            if pending["mission_seq"] is not None and header.ack == pending["mission_seq"]:
-                # remover pending (missão confirmada)
-                self.ml_pending_mission.pop(sid, None)
+                # 1) Se este ACK confirma a MISSION pendente, libertar o rover
+                if pending["mission_seq"] is not None and header.ack == pending["mission_seq"]:
+                    # remover pending (missão confirmada)
+                    self.ml_pending_mission.pop(sid, None)
 
-                # 2) Se a missão era manual, consumir da fila manual
-                fila_manual = self.manual_missions.get(sid)
-                if fila_manual and pending["missao"] == fila_manual[0]:
-                    fila_manual.pop(0)
-                    if not fila_manual:
-                        self.manual_missions.pop(sid, None)
+                    # 2) Se a missão era manual, consumir da fila manual
+                    fila_manual = self.manual_missions.get(sid)
+                    if fila_manual and pending["missao"] == fila_manual[0]:
+                        fila_manual.pop(0)
+                        if not fila_manual:
+                            self.manual_missions.pop(sid, None)
 
-                # 3) Avançar cenário (apenas depois do ACK da MISSION)
-                if self.scenario in (2, 4):
-                    if self.tarefas and pending["missao"] == self.tarefas[0]:
-                        self.tarefas.pop(0)
-                elif self.scenario == 3:
-                    self.task_counter += 1
+                    # 3) Avançar cenário (apenas depois do ACK da MISSION)
+                    if self.scenario in (2, 4):
+                        if self.tarefas and pending["missao"] == self.tarefas[0]:
+                            self.tarefas.pop(0)
+                    elif self.scenario == 3:
+                        self.task_counter += 1
 
-            # NOMISSION como pending, limpa-o ao receber um ACK qualquer
-            elif pending["mission_seq"] is None:
-                self.ml_pending_mission.pop(sid, None)
-            else:
-                print(f"[NaveMae/ML] tipo de mensagem desconhecido: {msg_type} de rover {sid}")
+                # NOMISSION como pending, limpa-o ao receber um ACK qualquer
+                elif pending["mission_seq"] is None:
+                    self.ml_pending_mission.pop(sid, None)
+                else:
+                    print(f"[NaveMae/ML] tipo de mensagem desconhecido: {msg_type} de rover {sid}")
 
 
     def gerar_tarefas(self, scenario: int):
