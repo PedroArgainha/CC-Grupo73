@@ -28,6 +28,8 @@ class NaveMae:
         self.tarefas = []
         self.scenario = 3          # número de cenários
         self.task_counter = 0      # contador p/ cenário 3 (infinito)
+        self.manual_missions = {}  # rover_id -> list[tuple(mission_id, task_id, x, y, radius, duracao)]
+        self.manual_task_counter = 1000  # só para task_id não colidir com os automáticos
 
         # ---------- Telemetria (TCP) ----------
         self.servidorSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -99,7 +101,35 @@ class NaveMae:
 
     #duvida amanha para o prof
     def _ws_msg_recebida(self, client, server, message: str):
-        print("[NaveMae] Mensagem do GC (ignorada):", message)
+        try:
+            data = json.loads(message)
+        except Exception:
+            print("[NaveMae] WS: JSON inválido:", message)
+            return
+
+        if data.get("type") != "assign_mission":
+            print("[NaveMae] WS: tipo desconhecido:", data.get("type"))
+            return
+
+        try:
+            rover_id = int(data["rover_id"])
+            mission_id = int(data["mission_id"])
+            x = int(data["x"])
+            y = int(data["y"])
+            radius = float(data.get("radius", 2.0))
+            duracao = int(data.get("duracao", 60))
+        except Exception as e:
+            print("[NaveMae] WS: payload inválido:", e, data)
+            return
+
+        # task_id único para poderes ver “incrementos”
+        self.manual_task_counter += 1
+        task_id = self.manual_task_counter
+
+        missao = (mission_id, task_id, x, y, radius, duracao)
+        self.manual_missions.setdefault(rover_id, []).append(missao)
+
+        print(f"[NaveMae] WS: missão manual enfileirada para rover {rover_id}: {missao}")
 
     def _ws_loop_envio(self):
         while not self.terminar:
@@ -179,6 +209,13 @@ class NaveMae:
 
     def _ml_handle_ready(self, stream_id: int, header: ml.MLHeader, addr):
         print(f"[NaveMae/ML] READY de rover {stream_id} (seq={header.seq})")
+
+        # 1) Prioridade: missões manuais do GC para este rover
+        fila_manual = self.manual_missions.get(stream_id)
+        if fila_manual:
+            missao = fila_manual[0]   # peek
+        else:
+            missao = None
 
         # ============================================================
         # 0) IDOTEMPOTÊNCIA: se já há resposta pendente (MISSION/NOMISSION)
@@ -577,30 +614,33 @@ class NaveMae:
             
             elif msg_type == ml.TYPE_ACK:
                 print(f"[NaveMae/ML] ACK de rover {sid} (ack={header.ack})")
-                pending = self.ml_pending_mission.get(sid)
-                if pending is None:
-                    continue
 
-                # Se o ACK confirma a MISSION pendente, libertamos o rover para próxima missão
-                if pending["mission_seq"] is not None and header.ack == pending["mission_seq"]:
-                    print(f"[NaveMae/ML] MISSION confirmada pelo rover {sid} (mission_seq={pending['mission_seq']})")
-                    self.ml_pending_mission.pop(sid, None)
+            pending = self.ml_pending_mission.get(sid)
+            if pending is None:
+                continue
 
-                    # ✅ avançar cenário APENAS depois do ACK da MISSION
-                    if self.scenario in (2, 4):
-                        # remover a missão confirmada da fila (pop do topo)
-                        if self.tarefas and pending["missao"] == self.tarefas[0]:
-                            self.tarefas.pop(0)
+            # 1) Se este ACK confirma a MISSION pendente, libertar o rover
+            if pending["mission_seq"] is not None and header.ack == pending["mission_seq"]:
+                # remover pending (missão confirmada)
+                self.ml_pending_mission.pop(sid, None)
 
-                    elif self.scenario == 3:
-                        # no infinito: só agora é que confirmamos e avançamos o contador
-                        self.task_counter += 1
-                
-                # Se pending["mission_seq"] is None (era NOMISSION), podes limpar quando vier ACK dessa resposta
-                # (Opcional: para não ficar preso em NOMISSION)
-                elif pending["mission_seq"] is None:
-                    # para NOMISSION, aceitamos qualquer ACK como "ok, ele recebeu"
-                    self.ml_pending_mission.pop(sid, None)
+                # 2) Se a missão era manual, consumir da fila manual
+                fila_manual = self.manual_missions.get(sid)
+                if fila_manual and pending["missao"] == fila_manual[0]:
+                    fila_manual.pop(0)
+                    if not fila_manual:
+                        self.manual_missions.pop(sid, None)
+
+                # 3) Avançar cenário (apenas depois do ACK da MISSION)
+                if self.scenario in (2, 4):
+                    if self.tarefas and pending["missao"] == self.tarefas[0]:
+                        self.tarefas.pop(0)
+                elif self.scenario == 3:
+                    self.task_counter += 1
+
+            # NOMISSION como pending, limpa-o ao receber um ACK qualquer
+            elif pending["mission_seq"] is None:
+                self.ml_pending_mission.pop(sid, None)
             else:
                 print(f"[NaveMae/ML] tipo de mensagem desconhecido: {msg_type} de rover {sid}")
 

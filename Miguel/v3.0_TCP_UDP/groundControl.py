@@ -27,6 +27,8 @@ class GroundControl:
     def __init__(self,roversN: int, host: str = "127.0.0.1", port: int = 2900):
         self.url = f"ws://{host}:{port}/"
         i=0
+        self.ws = None
+        self.ws_loop = None
         self.nRovers = roversN
         self.rovers = []
         self.missoes = [0] * roversN
@@ -73,29 +75,66 @@ class GroundControl:
             i+=1
         self.rodape(texto)
 
-    def menu (self):
+    def menu(self):
         menu = "Menu"
         self.cabecalho(menu)
-        print ("1 -> Ver missões")
-        print ("2 -> Ver Rovers ativos")
-        print ("3 -> Ver Estado dos rovers")
-        print ("4 -> Sair")
-        self.rodape(menu)
-        opcao = getInput("Introduza a sua opção ->",1,4)
-        if opcao==1:
-            self.printMissoes()
-            return 1
-        elif opcao==2:
-            self.printRoversAtivos()
-            return 1
-        elif opcao==3:
-            self.printRovers()
-            return 1
-        elif opcao==4:
-            return 0
-        
+
+        print("1 -> Ver missões")
+        print("2 -> Ver Rovers ativos")
+        print("3 -> Ver Estado dos rovers")
+        print("4 -> Missão prioridade (atribuir missão manual)")
+        print("5 -> Sair")
 
         self.rodape(menu)
+
+        opcao = getInput("Introduza a sua opção -> ", 1, 5)
+
+        if opcao == 1:
+            self.printMissoes()
+            return 1
+
+        elif opcao == 2:
+            self.printRoversAtivos()
+            return 1
+
+        elif opcao == 3:
+            self.printRovers()
+            return 1
+
+        elif opcao == 4:
+            self.missao_prioridade()
+            return 1
+
+        elif opcao == 5:
+            return 0
+
+        self.rodape(menu)
+
+    def missao_prioridade(self):
+        texto = "Missão prioridade"
+        self.cabecalho(texto)
+
+        rover_id = getInput("Rover (1..N) -> ", 1, self.nRovers)
+        mission_id = getInput("Mission ID (1..6) -> ", 1, 6)
+        x = getInput("X (0..15) -> ", 0, 15)
+        y = getInput("Y (0..15) -> ", 0, 15)
+        duracao = getInput("Duração (seg) (10..600) -> ", 10, 600)
+
+        payload = {
+            "type": "assign_mission",
+            "rover_id": rover_id,
+            "mission_id": mission_id,
+            "x": x,
+            "y": y,
+            "radius": 2.0,
+            "duracao": duracao
+        }
+
+        ok = self.send_ws(payload)
+        if ok:
+            print(f"[GC] Missão prioridade enviada para rover {rover_id}.")
+        self.rodape(texto)
+
 
     def printRovers (self):
         texto = "Telemetria mais recente de todos os rovers"
@@ -152,25 +191,46 @@ class GroundControl:
                 try:
                     async with websockets.connect(self.url) as ws:
                         # ligação estabelecida
+                        self.ws = ws
+                        self.ws_loop = asyncio.get_running_loop()
                         self._on_open(ws)
+
                         try:
                             async for message in ws:
                                 self._on_message(ws, message)
                         except websockets.ConnectionClosed as e:
                             self._on_close(ws, e.code, e.reason)
+
                 except Exception as e:
                     self._on_error(None, e)
-                    # espera 2 segundos e tenta outra vez
+                    self.ws = None
+                    self.ws_loop = None
+                    # espera antes de tentar reconectar
                     await asyncio.sleep(2)
 
-        # corre o loop async numa thread em background
-        self.ws_thread = threading.Thread(
-            target=lambda: asyncio.run(ws_coroutine()),
-            daemon=True,
-        )
-        self.ws_thread.start()
+    # corre o loop async numa thread em background
+    self.ws_thread = threading.Thread(
+        target=lambda: asyncio.run(ws_coroutine()),
+        daemon=True,
+    )
+    self.ws_thread.start()
 
-    
+
+    def send_ws(self, obj: dict):
+        if not self.ws or not self.ws_loop:
+            print("[GC] Não estou ligado à Nave-Mãe (WS).")
+            return False
+
+        msg = json.dumps(obj)
+        fut = asyncio.run_coroutine_threadsafe(self.ws.send(msg), self.ws_loop)
+        try:
+            fut.result(timeout=2)
+            return True
+        except Exception as e:
+            print("[GC] Falha ao enviar WS:", e)
+            return False
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="127.0.0.1", help="Host da Nave-Mãe")
