@@ -200,26 +200,26 @@ def parse_message(data: bytes) -> Tuple[MLHeader, bytes]:
 # Formatos binários para os payloads
 
 # ---- MISSION ----
-# mission_id: uint8
-# task_type : uint8  (0=explorar, 1=ir para ponto, etc.)
-# x         : float32
-# y         : float32
-# radius    : float32
-# duracao   : float32
-MISSION_FORMAT = "!BBffff"
+# mission_id : uint8
+# task_number: uint16  ← CORRIGIDO! Era uint8 (max 255), agora uint16 (max 65535)
+# x          : float32
+# y          : float32
+# radius     : float32
+# duracao    : float32
+MISSION_FORMAT = "!BHffff"  # B=uint8, H=uint16, f=float32
 MISSION_SIZE = struct.calcsize(MISSION_FORMAT)
 
 
 def build_payload_mission(
     mission_id: int,
-    task_type: int,
+    task_number: int,
     x: float,
     y: float,
     radius: float,
     duracao: float,
 ) -> bytes:
     """Constrói payload binário de uma MISSION."""
-    return struct.pack(MISSION_FORMAT, mission_id, task_type, x, y, radius, duracao)
+    return struct.pack(MISSION_FORMAT, mission_id, task_number, x, y, radius, duracao)
 
 
 def parse_payload_mission(payload: bytes) -> Dict[str, Any]:
@@ -232,10 +232,10 @@ def parse_payload_mission(payload: bytes) -> Dict[str, Any]:
             f"Payload MISSION com tamanho inválido "
             f"(esperado={MISSION_SIZE}, real={len(payload)})"
         )
-    mission_id, task_type, x, y, radius, duracao = struct.unpack(MISSION_FORMAT, payload)
+    mission_id, task_number, x, y, radius, duracao = struct.unpack(MISSION_FORMAT, payload)
     return {
         "mission_id": mission_id,
-        "task_type": task_type,
+        "task_number": task_number,
         "x": x,
         "y": y,
         "radius": radius,
@@ -320,4 +320,3 @@ def parse_payload_done(payload: bytes) -> Dict[str, Any]:
 def is_flag_set(flags: int, flag: int) -> bool:
     """util testar flags (NEEDS_ACK, ACK_ONLY, RETX)."""
     return (flags & flag) != 0
-
