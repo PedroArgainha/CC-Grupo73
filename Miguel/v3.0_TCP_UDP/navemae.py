@@ -293,7 +293,7 @@ class NaveMae:
             "missao": missao,
         }
 
-        print(f"[NaveMae/ML] → MISSION {mission_id} para rover {stream_id} (seq={mission_seq})")
+        print(f"[NaveMae/ML] → MISSION task={task_number} missao={mission_id} para rover {stream_id} (seq={mission_seq})")
 
 
     #PROGRESS sem missão ativa / missão errada → loga e manda ACK, não mexe em estado.
@@ -310,6 +310,8 @@ class NaveMae:
 
         # 1) Ver se há missão ativa para este rover
         estado = self.ml_estado.get(stream_id)
+        taskn = estado.get("task_number") if estado else None
+
         if not estado or estado.get("mission_id") != mission_id:
             # PROGRESS de missão desconhecida / já fechada
             print(
@@ -351,10 +353,11 @@ class NaveMae:
 
         print(
             f"[NaveMae/ML] PROGRESS rover {stream_id}: "
-            f"missao={info['mission_id']} status={info['status']} "
+            f"task={taskn} missao={info['mission_id']} status={info['status']} "
             f"{info['percent']}% bat={info['battery']} "
             f"pos=({info['x']:.1f},{info['y']:.1f})"
         )
+
 
         # 4) Enviar ACK do PROGRESS
         ack_msg = ml.build_message(
@@ -379,12 +382,13 @@ class NaveMae:
         result_code = info["result_code"]
 
         estado = self.ml_estado.get(stream_id)
+        taskn = estado.get("task_number") if estado else None
 
         # 1) Ver se já temos estado de missão para este rover
         if not estado or estado.get("mission_id") != mission_id:
             print(
-                f"[NaveMae/ML] DONE fora de contexto de rover {stream_id}: "
-                f"missao={mission_id} (sem missão ativa correspondente)"
+                f"[NaveMae/ML] DONE rover {stream_id}: "
+                f"task={taskn} missao={mission_id} resultado={result_code}"
             )
             # Podemos responder com ACK para o rover parar de tentar
             ack_msg = ml.build_message(
