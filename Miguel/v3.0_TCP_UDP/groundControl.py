@@ -190,7 +190,6 @@ class GroundControl:
             while True:
                 try:
                     async with websockets.connect(self.url) as ws:
-                        # ligação estabelecida
                         self.ws = ws
                         self.ws_loop = asyncio.get_running_loop()
                         self._on_open(ws)
@@ -205,15 +204,15 @@ class GroundControl:
                     self._on_error(None, e)
                     self.ws = None
                     self.ws_loop = None
-                    # espera antes de tentar reconectar
                     await asyncio.sleep(2)
 
-    # corre o loop async numa thread em background
-    self.ws_thread = threading.Thread(
-        target=lambda: asyncio.run(ws_coroutine()),
-        daemon=True,
-    )
-    self.ws_thread.start()
+            # ✅ ISTO TEM DE ESTAR DENTRO do start_ws (com indentação)
+            self.ws_thread = threading.Thread(
+                target=lambda: asyncio.run(ws_coroutine()),
+                daemon=True,
+            )
+            self.ws_thread.start()
+
 
 
     def send_ws(self, obj: dict):
