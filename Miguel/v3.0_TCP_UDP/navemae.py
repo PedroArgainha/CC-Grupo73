@@ -26,6 +26,8 @@ class NaveMae:
 
         # ---------- lista tarefas ----------
         self.tarefas = []
+        self.scenario = 3          # número de cenários
+        self.task_counter = 0      # contador p/ cenário 3 (infinito)
 
         # ---------- Telemetria (TCP) ----------
         self.servidorSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -132,21 +134,26 @@ class NaveMae:
             print("Enviei JSON")
 
 
-    def criaTarefa(self, n: int):
-            
-            mission_id = random.randint(1, 6)
-            task_number = n+1
+    def criaTarefa(self, task_id: int):
+            """
+            Devolve uma missão no formato:
+            (mission_id, task_id, x, y, radius, duracao)
+
+            mission_id: tipo de missão (1..6)
+            task_id: identificador único/sequencial da tarefa (o teu "contador")
+            """
+            mission_id = random.randint(1, 6)     # tipo de missão
             x = random.randint(0, 15)
             y = random.randint(0, 15)
             radius = 2.0
 
-            teste = random.randint(1, 3)
-            if teste==1:
-                duracao = random.randint(70, 180)
+            # duração aleatória 
+            if random.randint(1, 3) == 1:
+                duracao = random.randint(30, 60)
             else:
                 duracao = random.randint(45, 60)
 
-            return (mission_id, task_number, x, y, radius, duracao)
+            return (mission_id, task_id, x, y, radius, duracao)
 
     # ================== MissionLink handlers ==================
     def _ml_is_duplicate(self, stream_id: int, header: ml.MLHeader) -> bool:
@@ -173,8 +180,10 @@ class NaveMae:
     def _ml_handle_ready(self, stream_id: int, header: ml.MLHeader, addr):
         print(f"[NaveMae/ML] READY de rover {stream_id} (seq={header.seq})")
 
-        # ✅ Se já há uma MISSION pendente (ainda não confirmada por ACK),
-        # reenvia a MESMA resposta e não gera outra.
+        # ============================================================
+        # 0) IDOTEMPOTÊNCIA: se já há resposta pendente (MISSION/NOMISSION)
+        #    ainda não confirmada por ACK, reenvia a MESMA resposta.
+        # ============================================================
         pending = self.ml_pending_mission.get(stream_id)
         if pending is not None:
             try:
@@ -187,18 +196,29 @@ class NaveMae:
                 pass
             return
 
-        # Garantir lista de tarefas (se quiseres cenário determinístico, usa self.tarefas[0] em vez de random)
-        if not self.tarefas:
-            self.gerar_tarefas(3)
+        # ============================================================
+        # 1) ESCOLHER MISSÃO consoante cenário
+        #    - Cenários 1/2/4: vêm de self.tarefas (fila, peek)
+        #    - Cenário 3: gera on-demand (infinito)
+        # ============================================================
+        missao = None
 
-        global contador
-        missao = self.criaTarefa(contador)
-        contador += 1
-        # Se quiseres cenário determinístico por ordem: descomenta esta linha e comenta as 2 acima
-        # missao = self.tarefas[0] if self.tarefas else None
+        if self.scenario in (1, 2, 4):
+            # fila: NÃO fazer pop aqui
+            missao = self.tarefas[0] if self.tarefas else None
 
+        elif self.scenario == 3:
+            # infinito: gera uma missão nova (contador avança só depois no ACK!)
+            missao = self.criaTarefa(self.task_counter+1)
+
+        else:
+            # fallback
+            missao = None
+
+        # ============================================================
+        # 2) Se não há missão disponível → NOMISSION
+        # ============================================================
         if missao is None:
-            # Não há missão -> NOMISSION (e podemos guardar como pending se quiseres)
             reply_seq = self._prox_seq_ml()
             msg = ml.build_message(
                 msg_type=ml.TYPE_NOMISSION,
@@ -208,9 +228,12 @@ class NaveMae:
                 payload=b"",
                 flags=ml.FLAG_NEEDS_ACK,
             )
-            self.ml_sock.sendto(msg, addr)
+            try:
+                self.ml_sock.sendto(msg, addr)
+            except OSError:
+                pass
 
-            # Opcional: guardar NOMISSION como pending (estabiliza spam com loss alto)
+            # opcional: guardar NOMISSION como pending para não responder diferente em loss alto
             self.ml_pending_mission[stream_id] = {
                 "mission_seq": None,
                 "reply_bytes": msg,
@@ -220,13 +243,16 @@ class NaveMae:
             print(f"[NaveMae/ML] → NOMISSION para rover {stream_id}")
             return
 
+        # ============================================================
+        # 3) Temos missão → construir payload e enviar MISSION
+        # ============================================================
         # missao = (mission_id, task_number, x, y, radius, duracao)
         mission_id, task_number, x, y, radius, duracao = missao
-        print(f"idM={mission_id} TaskN={task_number} x={x} y={y} r={radius} d={duracao}")
+        print(f"[NaveMae/ML] missão escolhida: idM={mission_id} TaskN={task_number} x={x} y={y} r={radius} d={duracao}")
 
         payload = ml.build_payload_mission(mission_id, task_number, x, y, radius, duracao)
 
-        # Guardar estado interno da missão para este rover
+        # Guardar estado interno (só para tracking/GC)
         self.ml_estado[stream_id] = {
             "mission_id": mission_id,
             "task_number": task_number,
@@ -236,21 +262,31 @@ class NaveMae:
             "ultimo_progress": None,
             "done": False,
         }
-        self.rovers[stream_id - 1].atribiuMission(mission_id)
-        print(f"\033[91m Atribui a missao {mission_id} ao rover {stream_id}\033[0m")
 
-        # Enviar MISSION e guardar como pending até ACK
+        # Atualizar o rover “espelho” local (GC)
+        try:
+            self.rovers[stream_id - 1].atribiuMission(mission_id)
+        except Exception:
+            # se stream_id não bater certo com índice, pelo menos não crasha
+            pass
+
+        # Enviar MISSION (com seq guardado)
         mission_seq = self._prox_seq_ml()
         msg = ml.build_message(
             msg_type=ml.TYPE_MISSION,
             seq=mission_seq,
-            ack=header.seq,       # piggyback ACK do READY
+            ack=header.seq,            # piggyback ACK do READY
             stream_id=stream_id,
             payload=payload,
             flags=ml.FLAG_NEEDS_ACK,
         )
-        self.ml_sock.sendto(msg, addr)
 
+        try:
+            self.ml_sock.sendto(msg, addr)
+        except OSError:
+            pass
+
+        # Guardar como pending até ACK (isto é o que impede “saltar” missões com loss)
         self.ml_pending_mission[stream_id] = {
             "mission_seq": mission_seq,
             "reply_bytes": msg,
@@ -402,6 +438,7 @@ class NaveMae:
 
     def iniciar(self):
         
+        self.gerar_tarefas(self.scenario)
         # ---- Telemetria (TCP) ----
         self.servidorSocket.bind((self.host, self.port))
         self.servidorSocket.listen()
@@ -545,10 +582,16 @@ class NaveMae:
                     print(f"[NaveMae/ML] MISSION confirmada pelo rover {sid} (mission_seq={pending['mission_seq']})")
                     self.ml_pending_mission.pop(sid, None)
 
-                    # Se estiveres a usar cenário determinístico com self.tarefas[0], consome aqui:
-                    # if self.tarefas and pending["missao"] == self.tarefas[0]:
-                    #     self.tarefas.pop(0)
+                    # ✅ avançar cenário APENAS depois do ACK da MISSION
+                    if self.scenario in (2, 4):
+                        # remover a missão confirmada da fila (pop do topo)
+                        if self.tarefas and pending["missao"] == self.tarefas[0]:
+                            self.tarefas.pop(0)
 
+                    elif self.scenario == 3:
+                        # no infinito: só agora é que confirmamos e avançamos o contador
+                        self.task_counter += 1
+                
                 # Se pending["mission_seq"] is None (era NOMISSION), podes limpar quando vier ACK dessa resposta
                 # (Opcional: para não ficar preso em NOMISSION)
                 elif pending["mission_seq"] is None:
@@ -561,19 +604,29 @@ class NaveMae:
     def gerar_tarefas(self, scenario: int):
         self.tarefas = []
 
-        if scenario == 0:
-            return  # sem tarefas
-
         if scenario == 1:
-            self.tarefas.append(self.criaTarefa(1))
+            # 1) sem missões
+            return
 
         elif scenario == 2:
-            for i in range(1, 6):
-                self.tarefas.append(self.criaTarefa(i))
+            # 2) apenas 2 missões (task_id começando em 1)
+            self.tarefas.append(self.criaTarefa(1))
+            self.tarefas.append(self.criaTarefa(2))
+            return
 
         elif scenario == 3:
-            for i in range(0, 51):
-                self.tarefas.append(self.criaTarefa(i))
+            # 3) loop infinito: não preenche já a lista; gera on-demand no READY
+            return
+
+        elif scenario == 4:
+            # 4) determinístico fixo (sem random)
+            self.tarefas = [
+                (1, 1, 2, 2, 2.0, 30),
+                (2, 2, 8, 3, 2.0, 35),
+                (3, 3, 12, 10, 2.0, 40),
+                (4, 4, 5, 12, 2.0, 45),
+            ]
+            return
 
         else:
             raise ValueError("Scenario inválido")
@@ -583,9 +636,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Nave Mãe minimal para frames TS.")
     parser.add_argument("--host", default="0.0.0.0", help="endereço para escutar")
     parser.add_argument("--port", type=int, default=6000, help="porto TCP para aceitar rovers")
+    parse.add_argument("--scenario", type=int, choices=[1, 2, 3, 4], default = 3, help="cenário de missões (1-4)")
     args = parser.parse_args()
-    roversN = 6
+    roversN = 3
     nave = NaveMae(roversN,args.host, args.port)
+
+    nave.scenario = args.scenario
+    nave.gerar_tarefas(nave.scenario)
+
     nave.iniciar()
     try:
         while True:
