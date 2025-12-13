@@ -6,7 +6,6 @@ import websockets
 
 from roverINFO import Rover
 from missoes import int_to_mission
-import threading
 
 
 def getInput(texto: str, minimo: int, maximo: int) -> int:
@@ -36,7 +35,6 @@ class GroundControl:
         while i<roversN:
             rover = Rover(id=i+1)
             self.rovers.append(rover)
-
             i+=1
 
     
@@ -132,7 +130,10 @@ class GroundControl:
 
         ok = self.send_ws(payload)
         if ok:
-            print(f"[GC] Missão prioridade enviada para rover {rover_id}.")
+            print(f"[GC] ✅ Missão prioridade enviada para rover {rover_id}!")
+        else:
+            print(f"[GC] ❌ Falha ao enviar missão prioridade.")
+        
         self.rodape(texto)
 
 
@@ -172,13 +173,10 @@ class GroundControl:
         else:
             print("[GC] Mensagem desconhecida:", data)
 
-    # --------- Lógica de atualização ---------
-
     def _process_rovers_update(self, lista_rovers):
         for rdata in lista_rovers:
             rid = rdata.get("id")
             if rid is None:
-                print("Sem updates para mostar")
                 continue
             if 0 <= rid < self.nRovers:
                 self.rovers[rid].update_from_dict(rdata)
@@ -206,16 +204,16 @@ class GroundControl:
                     self.ws_loop = None
                     await asyncio.sleep(2)
 
-            # ✅ ISTO TEM DE ESTAR DENTRO do start_ws (com indentação)
-            self.ws_thread = threading.Thread(
-                target=lambda: asyncio.run(ws_coroutine()),
-                daemon=True,
-            )
-            self.ws_thread.start()
+        self.ws_thread = threading.Thread(
+            target=lambda: asyncio.run(ws_coroutine()),
+            daemon=True,
+        )
+        self.ws_thread.start()
 
 
 
     def send_ws(self, obj: dict):
+        """Envia mensagem para a NaveMae via WebSocket"""
         if not self.ws or not self.ws_loop:
             print("[GC] Não estou ligado à Nave-Mãe (WS).")
             return False
@@ -248,5 +246,3 @@ if __name__ == "__main__":
         print("\n[GC] Interrompido pelo utilizador.")
     finally:
         print("[GC] A terminar ligações...")
-
-
